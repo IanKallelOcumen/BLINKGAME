@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0a0508">
+    <title>BLINK — Retro Horror Edition</title>
+    <link rel="preconnect" href="https://unpkg.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module" src="js/game.js"></script>
+</head>
+<body>
+    <div id="start-screen">
+        <h1 class="title">BLINK</h1>
+        <p class="subtitle">Retro Horror Edition</p>
+        <p id="disclaimer">Content warning: horror, jumpscares, flashing effects. May not be suitable for those with photosensitivity.</p>
+        <div id="story-screen">
+            <p>You wake up in the research maze. The thing they kept below has escaped.</p>
+            <p>Collect all cursed artifacts to unlock the exit. Do not let it touch you.</p>
+            <p class="warning">Don't look away — it only moves when you're not looking. Never stare too long. If it catches you from behind, there is no escape.</p>
+            <p>Sprint to escape — stamina only returns when you stay still. Blink to rest your eyes — but it only moves when you can't see it.</p>
+        </div>
+        <button id="start-btn" type="button">ENTER</button>
+    </div>
+    <div id="loading-overlay">
+        <div class="loader" aria-hidden="true"></div>
+        <span class="loading-text">Loading...</span>
+    </div>
+    <div id="game-viewport"></div>
+    <div id="death-overlay"></div>
+    <div id="blackout"></div>
+    <div id="ui-layer">
+        <div id="center-text"></div>
+        <div id="meters-row">
+            <div id="stamina-meter-container"><div id="stamina-meter-fill"></div></div>
+            <div id="blink-meter-container"><div id="blink-meter-fill"></div></div>
+        </div>
+        <div id="stare-vignette"></div>
+        <div id="stare-crazy">
+            <span class="stare-text">DON'T STARE</span>
+            <span class="stare-text">DON'T STARE</span>
+            <span class="stare-text">DON'T STARE</span>
+            <span class="stare-text">DON'T STARE</span>
+            <span class="stare-text">DON'T STARE</span>
+            <span class="stare-text">DON'T STARE</span>
+            <span class="stare-text">DON'T STARE</span>
+            <span class="stare-text">DON'T STARE</span>
+            <span class="stare-text">DON'T STARE</span>
+            <span class="stare-text">DON'T STARE</span>
+            <span class="stare-text">DON'T STARE</span>
+            <span class="stare-text">DON'T STARE</span>
+        </div>
+        <div id="controls-hint-overlay">
+            <span>WASD Move</span><span>SHIFT Sprint</span><span>SPACE Blink</span><span>Mouse Look</span><span>Don't stare at it for too long</span>
+        </div>
+    </div>
+    <div id="controls-hint">WASD Move · SHIFT Sprint · SPACE Blink · CLICK to Start</div>
+    <div id="item-count">Artifacts: 0/5</div>
+    <canvas id="minimap" width="150" height="150"></canvas>
+    <button id="restart-btn">Restart</button>
+</body>
+</html>

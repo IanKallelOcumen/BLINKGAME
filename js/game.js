@@ -1,0 +1,582 @@
+/**
+ * Main game - init, input, game loop
+ */
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import {
+    ASSETS,
+    SETTINGS,
+    PLAYER_RADIUS,
+    EXIT_RADIUS,
+    DEATH_DURATION,
+} from './config.js';
+import { state } from './state.js';
+import { initAudio, unlockAudio, startRoomTone, updateSounds, stopAllSounds, stopStareSound, playStareSound, playJumpscare, playNeckSnap, playArtifactPickup } from './audio.js';
+import { generateLevel } from './level.js';
+import { loadGameAssets, moveEnemyStep, enemyIsObserved, spawnEnemy } from './enemy.js';
+import { updateMinimap } from './minimap.js';
+
+const _dom = {};
+function dom(id) {
+    if (!_dom[id]) _dom[id] = document.getElementById(id);
+    return _dom[id];
+}
+
+function hideLoading() {
+    dom('loading-overlay')?.classList.add('hidden');
+}
+
+function performBlink(refill) {
+    if (state.isBlinking || state.isGameOver) return;
+    if (refill && (state.manualBlinkCooldown || 0) > 0) return;
+    state.isBlinking = true;
+    state.enemyPath = null;
+    if (state.enemyModel) state.enemyBurstTime = SETTINGS.enemyBurstDuration;
+    const blackout = dom('blackout');
+    if (blackout) blackout.style.opacity = '1';
+    setTimeout(() => {
+        if (blackout) blackout.style.opacity = '0';
+        state.isBlinking = false;
+        if (refill) {
+            state.blinkLevel = 100;
+            state.manualBlinkCooldown = 0.5;
+        }
+    }, SETTINGS.blinkDuration);
+}
+
+function collidesWithWalls(pos) {
+    for (const w of state.walls) {
+        const dx = pos.x - w.position.x;
+        const dz = pos.z - w.position.z;
+        const halfSize = 2;
+        if (Math.abs(dx) < halfSize + PLAYER_RADIUS && Math.abs(dz) < halfSize + PLAYER_RADIUS) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function collidesWithEnemy(pos) {
+    if (!state.enemyModel) return false;
+    const dist = pos.distanceTo(state.enemyModel.position);
+    return dist < SETTINGS.catchDistance + PLAYER_RADIUS * 0.5;
+}
+
+let _artifactFrame = 0;
+
+function checkArtifacts() {
+    const t = performance.now() * 0.001;
+    _artifactFrame++;
+    for (const art of state.artifacts) {
+        art.rotation.y += 0.02;
+        art.position.y = 1 + Math.sin(t * 1.2 + art.position.x) * 0.06;
+        if (_artifactFrame % 2 === 0) {
+            art.traverse((child) => {
+                if (child.isPoints && child.geometry?.attributes?.position) {
+                    const pos = child.geometry.attributes.position;
+                    const base = child.userData.basePositions;
+                    if (base) {
+                        for (let i = 0; i < pos.count; i++) {
+                            const phase = (i / pos.count) * Math.PI * 2 + t * 0.8;
+                            pos.array[i * 3 + 1] = base[i * 3 + 1] + Math.sin(phase) * 0.12;
+                        }
+                        pos.needsUpdate = true;
+                    }
+                }
+            });
+        }
+    }
+
+    const playerPos = state.camera.position;
+    const collectedThisFrame = [];
+    state.artifacts = state.artifacts.filter((art) => {
+        if (art.position.distanceTo(playerPos) < 2) {
+            collectedThisFrame.push(art);
+            state.scene.remove(art);
+            state.artifactsCollected++;
+            return false;
+        }
+        return true;
+    });
+
+    if (collectedThisFrame.length > 0) {
+        playArtifactPickup();
+        const counterEl = dom('item-count');
+        if (counterEl) {
+            counterEl.innerText = `Artifacts: ${state.artifactsCollected}/${SETTINGS.totalArtifacts}`;
+        }
+        if (
+            state.artifactsCollected === 2 &&
+            state.pendingEnemyModel &&
+            !state.enemyModel
+        ) {
+            spawnEnemy();
+            playJumpscare();
+            const txt = dom('center-text');
+            if (txt && !state.isGameOver) {
+                txt.innerText = 'IT HAS AWAKENED';
+                txt.style.display = 'block';
+                txt.style.color = '#c41e3a';
+                setTimeout(() => {
+                    if (txt && !state.isGameOver) txt.style.display = 'none';
+                }, 3000);
+            }
+        }
+        if (
+            state.artifactsCollected === SETTINGS.totalArtifacts &&
+            state.exitDoor &&
+            !state.exitDoor.visible
+        ) {
+            state.exitDoor.visible = true;
+            const txt = dom('center-text');
+            if (txt && !state.isGameOver) {
+                txt.innerText = 'THE EXIT IS OPEN';
+                txt.style.display = 'block';
+                txt.style.color = '#ffffff';
+                setTimeout(() => {
+                    if (txt && !state.isGameOver) txt.style.display = 'none';
+                }, 3000);
+            }
+        }
+    }
+}
+
+function checkExitDoor() {
+    if (!state.exitDoor || !state.exitDoor.visible || state.isGameOver) return;
+    const dist = state.camera.position.distanceTo(state.exitDoor.position);
+    if (dist < EXIT_RADIUS) gameWin();
+}
+
+function triggerCaught() {
+    if (state.jumpscarePhase !== 'none') return;
+    state.isGameOver = true;
+    state.jumpscarePhase = 'jumpscare';
+    state.jumpscareStartTime = performance.now();
+    state.deathCameraPitch = state.camera.rotation.x;
+
+    stopAllSounds();
+    playNeckSnap();
+    state.controls.unlock();
+
+    const meters = dom('meters-row');
+    if (meters) meters.style.display = 'none';
+    const mm = dom('minimap');
+    if (mm) mm.style.display = 'none';
+    const ic = dom('item-count');
+    if (ic) ic.style.display = 'none';
+    const ch = dom('controls-hint');
+    if (ch) ch.style.display = 'none';
+    dom('controls-hint-overlay')?.classList.add('hidden');
+    dom('stare-vignette')?.classList.remove('active');
+    dom('stare-crazy')?.classList.remove('visible');
+    dom('stare-crazy')?.classList.remove('shake');
+    stopStareSound();
+    const dol = dom('death-overlay');
+    if (dol) dol.style.opacity = '0';
+}
+
+function showGameOverScreen() {
+    state.jumpscarePhase = 'done';
+    const vp = dom('game-viewport');
+    if (vp) {
+        vp.style.transform = 'none';
+        vp.style.opacity = '0.3';
+        vp.style.transition = 'opacity 0.4s ease';
+    }
+    const dol = dom('death-overlay');
+    if (dol) dol.style.opacity = '';
+    const txt = dom('center-text');
+    if (txt) { txt.innerText = 'THEY CAUGHT YOU'; txt.style.display = 'block'; }
+    const rb = dom('restart-btn');
+    if (rb) rb.style.display = 'block';
+}
+
+function gameWin() {
+    if (state.isGameOver) return;
+    state.isGameOver = true;
+    stopAllSounds();
+    state.controls.unlock();
+    const txt = dom('center-text');
+    if (txt) { txt.innerText = 'ESCAPED'; txt.style.display = 'block'; txt.style.color = '#00ff00'; }
+    const rb = dom('restart-btn');
+    if (rb) rb.style.display = 'block';
+}
+
+function init() {
+    state.scene = new THREE.Scene();
+    state.scene.background = new THREE.Color(0x000000);
+    state.scene.fog = new THREE.FogExp2(0x000000, 0.08);
+
+    state.camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+    );
+    state.camera.position.y = 1.6;
+
+    const flashlight = new THREE.SpotLight(0xffffff, 35);
+    flashlight.position.set(0, 0, 0);
+    flashlight.angle = 0.6;
+    flashlight.penumbra = 0.4;
+    flashlight.decay = 1.5;
+    flashlight.distance = 50;
+    flashlight.target.position.set(0, 0, -1);
+    state.camera.add(flashlight);
+    state.camera.add(flashlight.target);
+    state.scene.add(state.camera);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.12);
+    state.scene.add(ambient);
+
+    state.renderer = new THREE.WebGLRenderer({ antialias: false });
+    state.renderer.setSize(window.innerWidth / 2, window.innerHeight / 2, false);
+    state.renderer.domElement.style.width = '100%';
+    state.renderer.domElement.style.height = '100%';
+    state.renderer.domElement.style.imageRendering = 'pixelated';
+    state.renderer.setPixelRatio(1);
+    if (state.renderer.outputColorSpace !== undefined) {
+        state.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    } else {
+        state.renderer.outputEncoding = THREE.sRGBEncoding;
+    }
+    state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    state.renderer.toneMappingExposure = 1.0;
+    const viewport = dom('game-viewport');
+    if (viewport) viewport.appendChild(state.renderer.domElement);
+
+    state.controls = new PointerLockControls(state.camera, document.body);
+
+    dom('start-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        unlockAudio();
+        dom('start-screen')?.classList.add('hidden');
+    });
+
+    document.addEventListener('click', () => {
+        if (dom('start-screen')?.classList.contains('hidden')) {
+            state.controls.lock();
+            unlockAudio();
+            if (!state.hasStarted) {
+                state.hasStarted = true;
+                setTimeout(() => {
+                    dom('controls-hint-overlay')?.classList.add('hidden');
+                }, 5000);
+            }
+        }
+    });
+
+    initAudio();
+
+    document.addEventListener('keydown', (e) => {
+        switch (e.code) {
+            case 'KeyW':
+                state.moveForward = true;
+                e.preventDefault();
+                break;
+            case 'KeyA':
+                state.moveLeft = true;
+                e.preventDefault();
+                break;
+            case 'KeyS':
+                state.moveBackward = true;
+                e.preventDefault();
+                break;
+            case 'KeyD':
+                state.moveRight = true;
+                e.preventDefault();
+                break;
+            case 'ShiftLeft':
+            case 'ShiftRight':
+                state.isSprinting = true;
+                e.preventDefault();
+                break;
+            case 'Space':
+                performBlink(true);
+                e.preventDefault();
+                break;
+        }
+    });
+
+    document.addEventListener('keyup', (e) => {
+        switch (e.code) {
+            case 'KeyW':
+                state.moveForward = false;
+                e.preventDefault();
+                break;
+            case 'KeyA':
+                state.moveLeft = false;
+                e.preventDefault();
+                break;
+            case 'KeyS':
+                state.moveBackward = false;
+                e.preventDefault();
+                break;
+            case 'KeyD':
+                state.moveRight = false;
+                e.preventDefault();
+                break;
+            case 'ShiftLeft':
+            case 'ShiftRight':
+                state.isSprinting = false;
+                e.preventDefault();
+                break;
+        }
+    });
+
+    generateLevel();
+    loadGameAssets(hideLoading);
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && state.controls?.isLocked) {
+            state.controls.unlock();
+        }
+    });
+
+    state.controls.addEventListener('lock', () => {
+        state.prevTime = performance.now();
+        startRoomTone();
+    });
+    state.controls.addEventListener('unlock', () => { stopAllSounds(); });
+
+    state.renderer.domElement.addEventListener('webglcontextlost', (e) => {
+        e.preventDefault();
+    });
+}
+
+const MAX_DELTA = 0.1;
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    if (state.jumpscarePhase === 'jumpscare') {
+        const elapsed = performance.now() - state.jumpscareStartTime;
+        const progress = Math.min(1, elapsed / DEATH_DURATION);
+        state.camera.rotation.x = (state.deathCameraPitch || 0) + progress * Math.PI * 0.5;
+        const overlay = dom('death-overlay');
+        if (overlay) overlay.style.opacity = String(progress);
+
+        try {
+            state.renderer.render(state.scene, state.camera);
+        } catch (e) {
+            console.warn('Render skipped:', e);
+        }
+
+        if (elapsed >= DEATH_DURATION) {
+            showGameOverScreen();
+        }
+        return;
+    }
+
+    if (state.controls.isLocked && !state.isGameOver) {
+        const time = performance.now();
+        let delta = (time - state.prevTime) / 1000;
+        if (delta > MAX_DELTA) delta = MAX_DELTA;
+
+        state.velocity.x -= state.velocity.x * 10.0 * delta;
+        state.velocity.z -= state.velocity.z * 10.0 * delta;
+        state.direction.z = Number(state.moveForward) - Number(state.moveBackward);
+        state.direction.x = Number(state.moveRight) - Number(state.moveLeft);
+        state.direction.normalize();
+
+        const isMoving = state.moveForward || state.moveBackward || state.moveLeft || state.moveRight;
+        if (isMoving) {
+            state.stillTime = 0;
+        } else {
+            state.stillTime += delta;
+        }
+
+        const canSprint = state.isSprinting && isMoving && state.staminaLevel > 0;
+        const speed = canSprint ? SETTINGS.sprintSpeed : SETTINGS.walkSpeed;
+
+        if (state.moveForward || state.moveBackward) {
+            state.velocity.z -= state.direction.z * speed * delta;
+        }
+        if (state.moveLeft || state.moveRight) {
+            state.velocity.x -= state.direction.x * speed * delta;
+        }
+
+        if (canSprint) {
+            state.staminaLevel -= delta * SETTINGS.staminaDrain;
+            if (state.staminaLevel < 0) state.staminaLevel = 0;
+        } else if (!isMoving) {
+            state.staminaLevel += delta * SETTINGS.staminaRegen;
+            if (state.staminaLevel > 100) state.staminaLevel = 100;
+        }
+
+        const oldPos = state.camera.position.clone();
+
+        state.controls.moveRight(-state.velocity.x * delta);
+        state.controls.moveForward(-state.velocity.z * delta);
+
+        const newPos = state.camera.position;
+        const hitWall = collidesWithWalls(newPos);
+        const hitEnemy = collidesWithEnemy(newPos);
+
+        const observed = state.isBlinking ? false : enemyIsObserved();
+
+        if (hitWall || hitEnemy) {
+            state.camera.position.copy(oldPos);
+            state.velocity.set(0, 0, 0);
+            if (hitEnemy) {
+                triggerCaught();
+            } else if (hitWall && !observed) {
+                let enemySpeed = SETTINGS.enemySpeed + state.artifactsCollected * SETTINGS.enemySpeedPerArtifact;
+                if (state.enemyBurstTime > 0) enemySpeed *= SETTINGS.enemyBurstMultiplier;
+                const caught = moveEnemyStep(enemySpeed * delta, delta);
+                if (caught) triggerCaught();
+            }
+        }
+
+        const fill = dom('stamina-meter-fill');
+        const container = dom('stamina-meter-container');
+        if (fill) fill.style.width = Math.max(0, state.staminaLevel) + '%';
+        if (container) {
+            container.classList.toggle('low', state.staminaLevel <= 25);
+            container.classList.toggle('regen', !isMoving && state.staminaLevel < 100);
+        }
+
+        if (state.forcedBlinkCooldown > 0) state.forcedBlinkCooldown -= delta;
+        if (state.manualBlinkCooldown > 0) state.manualBlinkCooldown -= delta;
+        if (!state.isBlinking) {
+            const drainRate = isMoving ? SETTINGS.blinkDrainMoving : (SETTINGS.blinkDrainStill ?? 6);
+            state.blinkLevel -= delta * drainRate;
+            if (state.blinkLevel < 0) state.blinkLevel = 0;
+            if (state.blinkLevel <= 0 && state.forcedBlinkCooldown <= 0) {
+                performBlink(false);
+                state.blinkLevel = 35;
+                state.forcedBlinkCooldown = 2.5;
+            }
+        }
+        const blinkFill = dom('blink-meter-fill');
+        const blinkContainer = dom('blink-meter-container');
+        if (blinkFill) blinkFill.style.width = Math.max(0, state.blinkLevel) + '%';
+        if (blinkContainer) {
+            blinkContainer.classList.toggle('low', state.blinkLevel <= 25);
+            blinkContainer.classList.remove('regen');
+        }
+
+        let distToEnemy = Infinity;
+        if (state.enemyModel) {
+            distToEnemy = state.camera.position.distanceTo(state.enemyModel.position);
+            state._distToEnemy = distToEnemy;
+            const inCatchRange = distToEnemy <= SETTINGS.catchDistance;
+
+            if (observed) {
+                state.enemyWasObserved = true;
+            }
+            if (observed && distToEnemy < SETTINGS.stareKillDistance) {
+                state.lookingAtMonsterTime = (state.lookingAtMonsterTime || 0) + delta;
+                const stareKillTime = state.stareSoundDuration ?? SETTINGS.stareKillTime;
+                const stareEffectStart = state.stareEffectStart ?? SETTINGS.stareEffectStart;
+                if (state.lookingAtMonsterTime >= stareKillTime) {
+                    stopStareSound();
+                    triggerCaught();
+                } else {
+                    const denom = Math.max(0.1, stareKillTime - stareEffectStart);
+                    const effectProgress = Math.max(0, (state.lookingAtMonsterTime - stareEffectStart) / denom);
+                    const vig = dom('stare-vignette');
+                    if (vig) {
+                        vig.classList.toggle('active', effectProgress > 0);
+                        vig.style.opacity = String(Math.min(1, effectProgress * 1.2));
+                    }
+                    const crazy = dom('stare-crazy');
+                    if (crazy) {
+                        crazy.classList.toggle('visible', effectProgress > 0);
+                        crazy.classList.toggle('shake', effectProgress > 0.4);
+                    }
+                    if (effectProgress > 0) playStareSound();
+                    const vp = dom('game-viewport');
+                    if (vp && effectProgress > 0) {
+                        const shake = 2 + effectProgress * 6;
+                        const sx = (Math.random() - 0.5) * 2 * shake;
+                        const sy = (Math.random() - 0.5) * 2 * shake;
+                        vp.style.transform = `translate(${sx}px, ${sy}px)`;
+                    }
+                }
+            } else {
+                if (!state.isBlinking) {
+                    state.lookingAtMonsterTime = 0;
+                }
+                stopStareSound();
+                const vig = dom('stare-vignette');
+                if (vig) {
+                    vig.classList.remove('active');
+                    vig.style.opacity = '0';
+                }
+                const crazy = dom('stare-crazy');
+                if (crazy) { crazy.classList.remove('visible'); crazy.classList.remove('shake'); }
+                const vp = dom('game-viewport');
+                if (vp) vp.style.transform = 'none';
+            }
+
+            if (inCatchRange && observed) {
+                state.enemyInCatchRangeTime = (state.enemyInCatchRangeTime || 0) + delta;
+                if (state.enemyInCatchRangeTime >= SETTINGS.catchGracePeriod) {
+                    triggerCaught();
+                }
+            } else if (!inCatchRange) {
+                state.enemyInCatchRangeTime = 0;
+            }
+        } else {
+            state._distToEnemy = Infinity;
+            state.enemyInCatchRangeTime = 0;
+            state.lookingAtMonsterTime = 0;
+            stopStareSound();
+            const vig = dom('stare-vignette');
+            if (vig) { vig.classList.remove('active'); vig.style.opacity = '0'; }
+            const crazy = dom('stare-crazy');
+            if (crazy) { crazy.classList.remove('visible'); crazy.classList.remove('shake'); }
+            const vp = dom('game-viewport');
+            if (vp) vp.style.transform = 'none';
+        }
+
+        if (!observed) {
+            state.enemyInCatchRangeTime = 0;
+            const prevObserved = state.enemyWasObserved;
+            state.enemyWasObserved = false;
+            if (prevObserved && state.enemyModel) {
+                state.enemyBurstTime = SETTINGS.enemyBurstDuration;
+            }
+            if (state.enemyBurstTime > 0) {
+                state.enemyBurstTime -= delta;
+            }
+            let enemySpeed = SETTINGS.enemySpeed + state.artifactsCollected * SETTINGS.enemySpeedPerArtifact;
+            if (state.enemyBurstTime > 0) {
+                enemySpeed *= SETTINGS.enemyBurstMultiplier;
+            }
+            const caught = moveEnemyStep(enemySpeed * delta, delta);
+            if (caught) triggerCaught();
+        }
+
+        checkArtifacts();
+        checkExitDoor();
+        updateSounds(observed, state._distToEnemy ?? Infinity);
+        state.prevTime = time;
+    } else {
+        stopAllSounds();
+    }
+
+    try {
+        state.renderer.render(state.scene, state.camera);
+    } catch (e) {
+        console.warn('Render skipped:', e);
+    }
+    if (state._frameCount === undefined) state._frameCount = 0;
+    state._frameCount++;
+    if (state._frameCount % 2 === 0) updateMinimap();
+}
+
+window.addEventListener('resize', () => {
+    if (!state.camera || !state.renderer) return;
+    state.camera.aspect = window.innerWidth / window.innerHeight;
+    state.camera.updateProjectionMatrix();
+    state.renderer.setSize(window.innerWidth / 2, window.innerHeight / 2, false);
+});
+
+dom('restart-btn')?.addEventListener('click', () => {
+    window.location.reload();
+});
+
+init();
+animate();
