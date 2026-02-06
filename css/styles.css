@@ -446,6 +446,8 @@ body {
     color: var(--accent-red);
     text-shadow: 0 0 10px rgba(196, 30, 58, 0.5);
 }
+
+#volume-meter {
     position: absolute;
     bottom: 2rem;
     right: 1rem;
