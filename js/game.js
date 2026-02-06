@@ -66,7 +66,7 @@ function collidesWithWalls(pos) {
     for (const w of state.walls) {
         const dx = pos.x - w.position.x;
         const dz = pos.z - w.position.z;
-        const halfSize = 1.8;
+        const halfSize = 1.6;
         if (Math.abs(dx) < halfSize + PLAYER_RADIUS && Math.abs(dz) < halfSize + PLAYER_RADIUS) {
             return true;
         }
