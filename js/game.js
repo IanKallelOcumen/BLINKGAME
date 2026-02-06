@@ -342,11 +342,23 @@ function init() {
         }
     });
 
+    // Re-lock pointer if it escapes during gameplay
+    document.addEventListener('pointerlockchange', () => {
+        if (state.hasStarted && !state.isGameOver && !state.controls.isLocked && state.jumpscarePhase === 'none') {
+            state.controls.lock();
+        }
+    });
+
     initAudio();
 
     document.addEventListener('keydown', (e) => {
         if (e.code === 'Enter' && !state.hasStarted) {
             startGame();
+            e.preventDefault();
+            return;
+        }
+        // Prevent Escape from unlocking pointer during gameplay
+        if (e.code === 'Escape' && state.hasStarted && !state.isGameOver) {
             e.preventDefault();
             return;
         }

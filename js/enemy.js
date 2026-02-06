@@ -136,8 +136,8 @@ function prepareEnemy(model) {
 function getTeleportScarePosition() {
     const pPos = state.camera.position;
     const passages = state.mazePassagePositions || [];
-    const minD = SETTINGS.teleportScareMin ?? 6;
-    const maxD = SETTINGS.teleportScareMax ?? 14;
+    const minD = SETTINGS.teleportScareMin ?? 10;
+    const maxD = SETTINGS.teleportScareMax ?? 22;
     const candidates = passages.filter(p => {
         const d = Math.hypot(p.x - pPos.x, p.z - pPos.z);
         return d >= minD && d <= maxD;
