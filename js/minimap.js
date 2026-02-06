@@ -41,7 +41,7 @@ export function updateMinimap() {
 
     const forward = new THREE.Vector3();
     state.camera.getWorldDirection(forward);
-    const angle = Math.atan2(forward.z, forward.x);
+    const angle = Math.atan2(-forward.z, forward.x);
     const arrowLength = 12;
 
     ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
