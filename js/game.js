@@ -18,7 +18,10 @@ import { updateMinimap } from './minimap.js';
 
 const _dom = {};
 function dom(id) {
-    if (!_dom[id]) _dom[id] = document.getElementById(id);
+    if (_dom[id] === undefined) {
+        const el = document.getElementById(id);
+        if (el) _dom[id] = el;
+    }
     return _dom[id];
 }
 
@@ -710,5 +713,7 @@ dom('restart-btn')?.addEventListener('click', () => {
     window.location.reload();
 });
 
-init();
-animate();
+window.addEventListener('DOMContentLoaded', () => {
+    init();
+    animate();
+});
