@@ -63,3 +63,4 @@ export const state = {
     gameStartTime: 0,
     gameTimeLimit: 300,
     artifactAutoSpawnTime: null,
+};
