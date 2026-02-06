@@ -300,6 +300,13 @@ function init() {
         e.stopPropagation();
         unlockAudio();
         dom('start-screen')?.classList.add('hidden');
+        if (!state.hasStarted) {
+            state.hasStarted = true;
+            setTimeout(() => {
+                dom('controls-hint-overlay')?.classList.add('hidden');
+            }, 5000);
+        }
+        state.controls.lock();
     });
 
     document.addEventListener('wheel', (e) => {
