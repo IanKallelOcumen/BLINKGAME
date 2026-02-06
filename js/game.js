@@ -707,6 +707,30 @@ function animate() {
         checkExitDoor();
         updateFlashlightAndTimer();
         updateSounds(observed, state._distToEnemy ?? Infinity);
+
+        // Update exit door particles and glow
+        if (state.exitDoor?.visible && state.exitDoorParticles) {
+            const positions = state.exitDoorParticles.geometry.attributes.position.array;
+            const velocities = state.exitDoorParticleVelocities;
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i] += velocities[i] * delta;
+                positions[i + 1] += velocities[i + 1] * delta;
+                positions[i + 2] += velocities[i + 2] * delta;
+                const dx = positions[i] - state.exitPosition.x;
+                const dz = positions[i + 2] - state.exitPosition.z;
+                const dist = Math.hypot(dx, dz);
+                if (dist > 4 || positions[i + 1] > 4) {
+                    positions[i] = state.exitPosition.x + (Math.random() - 0.5) * 3;
+                    positions[i + 1] = 1.5 + Math.random() * 2;
+                    positions[i + 2] = state.exitPosition.z + (Math.random() - 0.5) * 3;
+                    velocities[i] = (Math.random() - 0.5) * 0.5;
+                    velocities[i + 1] = Math.random() * 0.3 + 0.1;
+                    velocities[i + 2] = (Math.random() - 0.5) * 0.5;
+                }
+            }
+            state.exitDoorParticles.geometry.attributes.position.needsUpdate = true;
+        }
+
         state.prevTime = time;
     } else {
         stopAllSounds();

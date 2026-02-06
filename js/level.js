@@ -154,7 +154,8 @@ export function generateLevel() {
     const doorGeo = new THREE.BoxGeometry(2, 3, 0.5);
     const doorMat = new THREE.MeshStandardMaterial({
         color: 0xffffff,
-        emissive: 0x444444,
+        emissive: 0x00ff88,
+        emissiveIntensity: 0.8,
         roughness: 0.3,
     });
     state.mazePassagePositions = [];
@@ -178,6 +179,33 @@ export function generateLevel() {
     state.exitDoor.position.set(exitPos.x, 1.5, exitPos.z);
     state.exitDoor.visible = false;
     state.scene.add(state.exitDoor);
+
+    // Add glow light to exit door
+    const doorGlow = new THREE.PointLight(0x00ff88, 3, 15);
+    doorGlow.position.set(exitPos.x, 2, exitPos.z);
+    state.scene.add(doorGlow);
+    state.exitDoorGlow = doorGlow;
+
+    // Create particles for exit door
+    const particleCount = 30;
+    const particleGeo = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const velocities = new Float32Array(particleCount * 3);
+    for (let i = 0; i < particleCount; i++) {
+        positions[i * 3] = exitPos.x + (Math.random() - 0.5) * 3;
+        positions[i * 3 + 1] = 1.5 + Math.random() * 2;
+        positions[i * 3 + 2] = exitPos.z + (Math.random() - 0.5) * 3;
+        velocities[i * 3] = (Math.random() - 0.5) * 0.5;
+        velocities[i * 3 + 1] = Math.random() * 0.3 + 0.1;
+        velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.5;
+    }
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particleGeo.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+    const particleMat = new THREE.PointsMaterial({ color: 0x00ff88, size: 0.2, sizeAttenuation: true });
+    const particles = new THREE.Points(particleGeo, particleMat);
+    state.scene.add(particles);
+    state.exitDoorParticles = particles;
+    state.exitDoorParticleVelocities = velocities;
 
     const navSize = 48;
     const navCell = 2;
