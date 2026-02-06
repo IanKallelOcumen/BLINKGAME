@@ -2,6 +2,12 @@
   "name": "blink-game",
   "version": "1.0.0",
   "scripts": {
-    "serve": "npx serve . -p 3000"
+    "serve": "npx serve . -p 3000",
+    "dev": "vercel dev",
+    "build": "vercel build",
+    "deploy": "vercel --prod"
+  },
+  "devDependencies": {
+    "vercel": "^34.2.6"
   }
 }
