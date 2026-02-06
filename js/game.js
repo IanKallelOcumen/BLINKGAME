@@ -376,6 +376,10 @@ function init() {
                 performBlink(true);
                 e.preventDefault();
                 break;
+            case 'KeyF':
+                refreshFlashlight(0.2);
+                e.preventDefault();
+                break;
             case 'Equal':
             case 'Plus':
                 state.masterVolume = Math.min(1, state.masterVolume + 0.1);
@@ -471,6 +475,10 @@ function updateFlashlightAndTimer() {
     state.flashlightDim += 0.0005;
     const intensity = Math.max(2, state.flashlightIntensity * (1 - Math.min(1, state.flashlightDim)));
     if (state.flashlight) state.flashlight.intensity = intensity;
+}
+
+function refreshFlashlight(amount = 0.2) {
+    state.flashlightDim = Math.max(0, state.flashlightDim - amount);
 }
 
 function updateVolumeDisplay() {
