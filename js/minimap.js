@@ -39,28 +39,15 @@ export function updateMinimap() {
     const forward = new THREE.Vector3();
     state.camera.getWorldDirection(forward);
     const angle = Math.atan2(-forward.z, forward.x);
-    const coneAngle = Math.acos(SETTINGS.observationDotThreshold);
-    const coneLength = Math.min(w / 2, h / 2) * 0.8;
+    const arrowLength = 12;
 
-    ctx.fillStyle = 'rgba(255, 255, 0, 0.15)';
-    ctx.beginPath();
-    ctx.moveTo(p.mx, p.my);
-    ctx.arc(p.mx, p.my, coneLength, angle - coneAngle, angle + coneAngle);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.strokeStyle = 'rgba(255, 255, 0, 0.4)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(p.mx, p.my);
     ctx.lineTo(
-        p.mx + Math.cos(angle - coneAngle) * coneLength,
-        p.my + Math.sin(angle - coneAngle) * coneLength
-    );
-    ctx.moveTo(p.mx, p.my);
-    ctx.lineTo(
-        p.mx + Math.cos(angle + coneAngle) * coneLength,
-        p.my + Math.sin(angle + coneAngle) * coneLength
+        p.mx + Math.cos(angle) * arrowLength,
+        p.my + Math.sin(angle) * arrowLength
     );
     ctx.stroke();
 

@@ -24,6 +24,7 @@ export const state = {
     isBlinking: false,
     forcedBlinkCooldown: 0,
     isGameOver: false,
+    lives: 3,
     artifactsCollected: 0,
     artifacts: [],
     enemyModel: null,

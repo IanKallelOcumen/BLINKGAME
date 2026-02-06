@@ -48,7 +48,7 @@ function collidesWithWalls(pos) {
     for (const w of state.walls) {
         const dx = pos.x - w.position.x;
         const dz = pos.z - w.position.z;
-        const halfSize = 2;
+        const halfSize = 1.8;
         if (Math.abs(dx) < halfSize + PLAYER_RADIUS && Math.abs(dz) < halfSize + PLAYER_RADIUS) {
             return true;
         }
@@ -70,7 +70,7 @@ function checkArtifacts() {
     for (const art of state.artifacts) {
         art.rotation.y += 0.02;
         art.position.y = 1 + Math.sin(t * 1.2 + art.position.x) * 0.06;
-        if (_artifactFrame % 2 === 0) {
+        if (_artifactFrame % 3 === 0) {
             art.traverse((child) => {
                 if (child.isPoints && child.geometry?.attributes?.position) {
                     const pos = child.geometry.attributes.position;
@@ -147,9 +147,41 @@ function checkExitDoor() {
     if (dist < EXIT_RADIUS) gameWin();
 }
 
+function respawnPlayer() {
+    const respawnPos = state.mazePassagePositions?.length > 0
+        ? state.mazePassagePositions[Math.floor(Math.random() * state.mazePassagePositions.length)]
+        : { x: 0, z: 0 };
+    state.camera.position.set(respawnPos.x, 1.6, respawnPos.z);
+    state.velocity.set(0, 0, 0);
+    state.staminaLevel = 100;
+    state.blinkLevel = 100;
+    state.jumpscarePhase = 'none';
+    if (state.enemyModel) {
+        state.enemyModel.position.set(
+            respawnPos.x + 20,
+            state.enemyFloorY,
+            respawnPos.z + 20
+        );
+        state.enemyPath = null;
+    }
+    const meters = dom('meters-row');
+    if (meters) meters.style.display = '';
+    const mm = dom('minimap');
+    if (mm) mm.style.display = '';
+    const ic = dom('item-count');
+    if (ic) ic.style.display = '';
+    const lc = dom('lives-count');
+    if (lc) lc.style.display = '';
+    const ch = dom('controls-hint');
+    if (ch) ch.style.display = '';
+    dom('controls-hint-overlay')?.classList.remove('hidden');
+    const dol = dom('death-overlay');
+    if (dol) dol.style.opacity = '0';
+    state.controls.lock();
+}
+
 function triggerCaught() {
     if (state.jumpscarePhase !== 'none') return;
-    state.isGameOver = true;
     state.jumpscarePhase = 'jumpscare';
     state.jumpscareStartTime = performance.now();
     state.deathCameraPitch = state.camera.rotation.x;
@@ -164,6 +196,8 @@ function triggerCaught() {
     if (mm) mm.style.display = 'none';
     const ic = dom('item-count');
     if (ic) ic.style.display = 'none';
+    const lc = dom('lives-count');
+    if (lc) lc.style.display = 'none';
     const ch = dom('controls-hint');
     if (ch) ch.style.display = 'none';
     dom('controls-hint-overlay')?.classList.add('hidden');
@@ -177,18 +211,28 @@ function triggerCaught() {
 
 function showGameOverScreen() {
     state.jumpscarePhase = 'done';
-    const vp = dom('game-viewport');
-    if (vp) {
-        vp.style.transform = 'none';
-        vp.style.opacity = '0.3';
-        vp.style.transition = 'opacity 0.4s ease';
+    state.lives--;
+    const lc = dom('lives-count');
+    if (lc) lc.innerText = `Lives: ${state.lives}`;
+    if (state.lives > 0) {
+        setTimeout(() => {
+            respawnPlayer();
+        }, 2000);
+    } else {
+        state.isGameOver = true;
+        const vp = dom('game-viewport');
+        if (vp) {
+            vp.style.transform = 'none';
+            vp.style.opacity = '0.3';
+            vp.style.transition = 'opacity 0.4s ease';
+        }
+        const dol = dom('death-overlay');
+        if (dol) dol.style.opacity = '';
+        const txt = dom('center-text');
+        if (txt) { txt.innerText = 'GAME OVER'; txt.style.display = 'block'; }
+        const rb = dom('restart-btn');
+        if (rb) rb.style.display = 'block';
     }
-    const dol = dom('death-overlay');
-    if (dol) dol.style.opacity = '';
-    const txt = dom('center-text');
-    if (txt) { txt.innerText = 'THEY CAUGHT YOU'; txt.style.display = 'block'; }
-    const rb = dom('restart-btn');
-    if (rb) rb.style.display = 'block';
 }
 
 function gameWin() {
@@ -205,7 +249,7 @@ function gameWin() {
 function init() {
     state.scene = new THREE.Scene();
     state.scene.background = new THREE.Color(0x000000);
-    state.scene.fog = new THREE.FogExp2(0x000000, 0.08);
+    state.scene.fog = new THREE.FogExp2(0x000000, 0.06);
 
     state.camera = new THREE.PerspectiveCamera(
         75,
@@ -229,12 +273,13 @@ function init() {
     const ambient = new THREE.AmbientLight(0xffffff, 0.12);
     state.scene.add(ambient);
 
-    state.renderer = new THREE.WebGLRenderer({ antialias: false });
+    state.renderer = new THREE.WebGLRenderer({ antialias: false, precision: 'lowp' });
     state.renderer.setSize(window.innerWidth / 2, window.innerHeight / 2, false);
     state.renderer.domElement.style.width = '100%';
     state.renderer.domElement.style.height = '100%';
     state.renderer.domElement.style.imageRendering = 'pixelated';
     state.renderer.setPixelRatio(1);
+    state.renderer.shadowMap.enabled = false;
     if (state.renderer.outputColorSpace !== undefined) {
         state.renderer.outputColorSpace = THREE.SRGBColorSpace;
     } else {
