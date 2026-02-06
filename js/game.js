@@ -22,6 +22,17 @@ function dom(id) {
     return _dom[id];
 }
 
+function startGame() {
+    if (state.hasStarted) return;
+    state.hasStarted = true;
+    unlockAudio();
+    dom('start-screen')?.classList.add('hidden');
+    setTimeout(() => {
+        dom('controls-hint-overlay')?.classList.add('hidden');
+    }, 5000);
+    state.controls.lock();
+}
+
 function hideLoading() {
     dom('loading-overlay')?.classList.add('hidden');
 }
@@ -298,15 +309,7 @@ function init() {
 
     dom('start-btn')?.addEventListener('click', (e) => {
         e.stopPropagation();
-        unlockAudio();
-        dom('start-screen')?.classList.add('hidden');
-        if (!state.hasStarted) {
-            state.hasStarted = true;
-            setTimeout(() => {
-                dom('controls-hint-overlay')?.classList.add('hidden');
-            }, 5000);
-        }
-        state.controls.lock();
+        startGame();
     });
 
     document.addEventListener('wheel', (e) => {
@@ -324,18 +327,17 @@ function init() {
         if (dom('start-screen')?.classList.contains('hidden')) {
             state.controls.lock();
             unlockAudio();
-            if (!state.hasStarted) {
-                state.hasStarted = true;
-                setTimeout(() => {
-                    dom('controls-hint-overlay')?.classList.add('hidden');
-                }, 5000);
-            }
         }
     });
 
     initAudio();
 
     document.addEventListener('keydown', (e) => {
+        if (e.code === 'Enter' && !state.hasStarted) {
+            startGame();
+            e.preventDefault();
+            return;
+        }
         switch (e.code) {
             case 'KeyW':
                 state.moveForward = true;
