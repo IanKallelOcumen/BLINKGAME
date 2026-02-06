@@ -417,7 +417,40 @@ function init() {
     });
 }
 
-const MAX_DELTA = 0.1;\n\nfunction updateFlashlightAndTimer() {\n    if (!state.gameStartTime || state.isGameOver) return;\n    \n    const elapsed = (performance.now() - state.gameStartTime) / 1000;\n    const remaining = Math.max(0, state.gameTimeLimit - elapsed);\n    const mins = Math.floor(remaining / 60);\n    const secs = Math.floor(remaining % 60);\n    const timerEl = dom('game-timer');\n    if (timerEl) {\n        timerEl.innerText = `Time: ${mins}:${secs < 10 ? '0' : ''}${secs}`;\n        if (remaining < 60) timerEl.classList.add('low-time');\n    }\n    \n    if (remaining <= 0 && state.artifacts.length > 0) {\n        state.artifacts.forEach(art => {\n            if (art && art.position) {\n                art.position.y = 1.5;\n                art.visible = true;\n            }\n        });\n    }\n    \n    const shakeAmount = Math.abs(state.camera.position.y - state.lastCameraY);\n    if (shakeAmount > 0.3) {\n        state.flashlightDim = 0;\n        state.lastCameraY = state.camera.position.y;\n    } else {\n        state.lastCameraY = state.camera.position.y;\n    }\n    \n    state.flashlightDim += 0.0005;\n    const intensity = Math.max(2, state.flashlightIntensity * (1 - Math.min(1, state.flashlightDim)));\n    if (state.flashlight) state.flashlight.intensity = intensity;\n}\n\nfunction updateVolumeDisplay() {\n    const fill = dom('volume-fill');\n    if (fill) {\n        fill.style.width = (state.masterVolume * 100) + '%';\n    }\n}\n\nconst MAX_DELTA = 0.1;
+const MAX_DELTA = 0.1;
+
+function updateFlashlightAndTimer() {
+    if (!state.gameStartTime || state.isGameOver) return;
+
+    const elapsed = (performance.now() - state.gameStartTime) / 1000;
+    const remaining = Math.max(0, state.gameTimeLimit - elapsed);
+    const mins = Math.floor(remaining / 60);
+    const secs = Math.floor(remaining % 60);
+    const timerEl = dom('game-timer');
+    if (timerEl) {
+        timerEl.innerText = `Time: ${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        if (remaining < 60) timerEl.classList.add('low-time');
+    }
+
+    if (remaining <= 0 && state.artifacts.length > 0) {
+        state.artifacts.forEach((art) => {
+            if (art && art.position) {
+                art.position.y = 1.5;
+                art.visible = true;
+            }
+        });
+    }
+
+    const shakeAmount = Math.abs(state.camera.position.y - state.lastCameraY);
+    if (shakeAmount > 0.3) {
+        state.flashlightDim = 0;
+    }
+    state.lastCameraY = state.camera.position.y;
+
+    state.flashlightDim += 0.0005;
+    const intensity = Math.max(2, state.flashlightIntensity * (1 - Math.min(1, state.flashlightDim)));
+    if (state.flashlight) state.flashlight.intensity = intensity;
+}
 
 function updateVolumeDisplay() {
     const fill = dom('volume-fill');
@@ -631,6 +664,7 @@ function animate() {
 
         checkArtifacts();
         checkExitDoor();
+        updateFlashlightAndTimer();
         updateSounds(observed, state._distToEnemy ?? Infinity);
         state.prevTime = time;
     } else {
