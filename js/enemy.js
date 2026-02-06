@@ -115,7 +115,7 @@ function prepareEnemy(model) {
 
     model.position.set(0, 0, 0);
     model.scale.set(1, 1, 1);
-    model.rotation.set(Math.PI, 0, 0);
+    model.rotation.set(0, 0, 0);
     model.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(model);
     const height = box.max.y - box.min.y;
