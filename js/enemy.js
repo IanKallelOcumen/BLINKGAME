@@ -377,6 +377,7 @@ export function moveEnemyStep(maxStep, deltaTime) {
     const lookY = state.enemyFloorY + 1.6;
     const root = state.enemyModel.userData.meshRoot || state.enemyModel;
     root.lookAt(pPos.x, lookY, pPos.z);
+    const dirToPlayer = new THREE.Vector3(pPos.x - ePos.x, 0, pPos.z - ePos.z);\n    if (dirToPlayer.length() > 0.01) {\n        dirToPlayer.normalize();\n        const angle = Math.atan2(dirToPlayer.x, dirToPlayer.z);\n        root.rotation.y = angle;\n        root.rotation.x = 0;\n        root.rotation.z = 0;\n    }
 
     const huntSpin = (state.enemyHuntSpin ?? 0) + (deltaTime || 0) * 3;
     state.enemyHuntSpin = huntSpin;

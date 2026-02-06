@@ -372,12 +372,13 @@ body {
     position: absolute;
     top: 1rem;
     right: 1rem;
-    width: 140px;
-    height: 140px;
-    border: 1px solid var(--ui-border);
-    background: var(--ui-glass);
+    width: 200px;
+    height: 200px;
+    border: 2px solid var(--accent-cyan);
+    background: rgba(0, 0, 0, 0.95);
     z-index: 15;
-    border-radius: 4px;
+    border-radius: 6px;
+    box-shadow: 0 0 20px rgba(0, 229, 255, 0.3);
 }
 
 #restart-btn {
@@ -428,4 +429,51 @@ body {
     font-weight: 700;
     letter-spacing: 0.1em;
     text-shadow: 0 0 8px rgba(196, 30, 58, 0.4);
+}
+
+#game-timer {
+    position: absolute;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.95rem;
+    letter-spacing: 0.1em;
+    transition: color 0.3s ease;
+}
+
+#game-timer.low-time {
+    color: var(--accent-red);
+    text-shadow: 0 0 10px rgba(196, 30, 58, 0.5);
+}
+    position: absolute;
+    bottom: 2rem;
+    right: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    z-index: 20;
+}
+
+#volume-label {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    width: 25px;
+}
+
+#volume-bar {
+    width: 60px;
+    height: 4px;
+    background: var(--ui-glass);
+    border: 1px solid var(--ui-border);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+#volume-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, var(--accent-green), #88ffaa);
+    box-shadow: 0 0 8px rgba(0, 255, 136, 0.5);
 }

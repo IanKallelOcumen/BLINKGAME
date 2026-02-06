@@ -16,8 +16,11 @@ export function updateMinimap() {
     const w = canvas.width;
     const h = canvas.height;
 
-    ctx.fillStyle = 'rgba(0,0,0,0.9)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
     ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(0, 229, 255, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, w, h);
 
     const worldSize = 100;
     const worldToMap = (x, z) => {
@@ -52,23 +55,30 @@ export function updateMinimap() {
     ctx.stroke();
 
     ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(p.mx, p.my, 4, 0, Math.PI * 2);
+    ctx.arc(p.mx, p.my, 5, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
 
-    ctx.fillStyle = '#00ffff';
+    ctx.fillStyle = 'rgba(0, 255, 255, 1)';
+    ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
+    ctx.lineWidth = 1;
     (state.artifacts || []).forEach((art) => {
         const a = worldToMap(art.position.x, art.position.z);
         ctx.beginPath();
-        ctx.arc(a.mx, a.my, 3, 0, Math.PI * 2);
+        ctx.arc(a.mx, a.my, 4, 0, Math.PI * 2);
         ctx.fill();
+        ctx.stroke();
     });
 
     if (state.exitDoor && state.exitDoor.visible) {
         const d = worldToMap(state.exitDoor.position.x, state.exitDoor.position.z);
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = '#00ff00';
-        const size = 6;
+        ctx.fillStyle = '#00ff88';
+        ctx.strokeStyle = '#00ff88';
+        ctx.lineWidth = 2;
+        const size = 8;
         ctx.fillRect(d.mx - size / 2, d.my - size / 2, size, size);
         ctx.strokeRect(d.mx - size / 2, d.my - size / 2, size, size);
     }

@@ -55,4 +55,11 @@ export const state = {
     stareSoundDuration: null,
     stareEffectStart: null,
     audioUnlocked: false,
-};
+    masterVolume: 1.0,
+    flashlight: null,
+    flashlightIntensity: 35,
+    flashlightDim: 0,
+    lastCameraY: 1.6,
+    gameStartTime: 0,
+    gameTimeLimit: 300,
+    artifactAutoSpawnTime: null,

@@ -70,7 +70,7 @@ function checkArtifacts() {
     for (const art of state.artifacts) {
         art.rotation.y += 0.02;
         art.position.y = 1 + Math.sin(t * 1.2 + art.position.x) * 0.06;
-        if (_artifactFrame % 3 === 0) {
+        if (_artifactFrame % 4 === 0) {
             art.traverse((child) => {
                 if (child.isPoints && child.geometry?.attributes?.position) {
                     const pos = child.geometry.attributes.position;
@@ -152,6 +152,8 @@ function respawnPlayer() {
         ? state.mazePassagePositions[Math.floor(Math.random() * state.mazePassagePositions.length)]
         : { x: 0, z: 0 };
     state.camera.position.set(respawnPos.x, 1.6, respawnPos.z);
+    state.camera.rotation.set(0, 0, 0);
+    state.deathCameraPitch = 0;
     state.velocity.set(0, 0, 0);
     state.staminaLevel = 100;
     state.blinkLevel = 100;
@@ -268,6 +270,8 @@ function init() {
     flashlight.target.position.set(0, 0, -1);
     state.camera.add(flashlight);
     state.camera.add(flashlight.target);
+    state.flashlight = flashlight;
+    state.flashlightIntensity = 35;
     state.scene.add(state.camera);
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.12);
@@ -297,6 +301,17 @@ function init() {
         unlockAudio();
         dom('start-screen')?.classList.add('hidden');
     });
+
+    document.addEventListener('wheel', (e) => {
+        if (state.controls?.isLocked) {
+            if (e.deltaY < 0) {
+                state.masterVolume = Math.min(1, state.masterVolume + 0.05);
+            } else if (e.deltaY > 0) {
+                state.masterVolume = Math.max(0, state.masterVolume - 0.05);
+            }
+            updateVolumeDisplay();
+        }
+    }, { passive: true });
 
     document.addEventListener('click', () => {
         if (dom('start-screen')?.classList.contains('hidden')) {
@@ -340,6 +355,17 @@ function init() {
                 performBlink(true);
                 e.preventDefault();
                 break;
+            case 'Equal':
+            case 'Plus':
+                state.masterVolume = Math.min(1, state.masterVolume + 0.1);
+                updateVolumeDisplay();
+                e.preventDefault();
+                break;
+            case 'Minus':
+                state.masterVolume = Math.max(0, state.masterVolume - 0.1);
+                updateVolumeDisplay();
+                e.preventDefault();
+                break;
         }
     });
 
@@ -380,6 +406,8 @@ function init() {
 
     state.controls.addEventListener('lock', () => {
         state.prevTime = performance.now();
+        state.gameStartTime = performance.now();
+        state.lastCameraY = state.camera.position.y;
         startRoomTone();
     });
     state.controls.addEventListener('unlock', () => { stopAllSounds(); });
@@ -389,7 +417,14 @@ function init() {
     });
 }
 
-const MAX_DELTA = 0.1;
+const MAX_DELTA = 0.1;\n\nfunction updateFlashlightAndTimer() {\n    if (!state.gameStartTime || state.isGameOver) return;\n    \n    const elapsed = (performance.now() - state.gameStartTime) / 1000;\n    const remaining = Math.max(0, state.gameTimeLimit - elapsed);\n    const mins = Math.floor(remaining / 60);\n    const secs = Math.floor(remaining % 60);\n    const timerEl = dom('game-timer');\n    if (timerEl) {\n        timerEl.innerText = `Time: ${mins}:${secs < 10 ? '0' : ''}${secs}`;\n        if (remaining < 60) timerEl.classList.add('low-time');\n    }\n    \n    if (remaining <= 0 && state.artifacts.length > 0) {\n        state.artifacts.forEach(art => {\n            if (art && art.position) {\n                art.position.y = 1.5;\n                art.visible = true;\n            }\n        });\n    }\n    \n    const shakeAmount = Math.abs(state.camera.position.y - state.lastCameraY);\n    if (shakeAmount > 0.3) {\n        state.flashlightDim = 0;\n        state.lastCameraY = state.camera.position.y;\n    } else {\n        state.lastCameraY = state.camera.position.y;\n    }\n    \n    state.flashlightDim += 0.0005;\n    const intensity = Math.max(2, state.flashlightIntensity * (1 - Math.min(1, state.flashlightDim)));\n    if (state.flashlight) state.flashlight.intensity = intensity;\n}\n\nfunction updateVolumeDisplay() {\n    const fill = dom('volume-fill');\n    if (fill) {\n        fill.style.width = (state.masterVolume * 100) + '%';\n    }\n}\n\nconst MAX_DELTA = 0.1;
+
+function updateVolumeDisplay() {
+    const fill = dom('volume-fill');
+    if (fill) {
+        fill.style.width = (state.masterVolume * 100) + '%';
+    }
+}
 
 function animate() {
     requestAnimationFrame(animate);
@@ -609,7 +644,7 @@ function animate() {
     }
     if (state._frameCount === undefined) state._frameCount = 0;
     state._frameCount++;
-    if (state._frameCount % 2 === 0) updateMinimap();
+    if (state._frameCount % 4 === 0) updateMinimap();
 }
 
 window.addEventListener('resize', () => {

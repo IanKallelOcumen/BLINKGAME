@@ -40,7 +40,7 @@ export function initAudio() {
 
 export function startRoomTone() {
     if (!state.audioUnlocked || !state.roomToneAudio) return;
-    state.roomToneAudio.volume = SETTINGS.roomToneVolume ?? 0.5;
+    state.roomToneAudio.volume = (SETTINGS.roomToneVolume ?? 0.5) * state.masterVolume;
     if (state.roomToneAudio.paused) {
         state.roomToneAudio.play().catch(() => {});
     }
@@ -71,6 +71,7 @@ export function updateSounds(isObservingEnemy, distToEnemy) {
 
     if (state.walkAudio) {
         if (isMoving && state.controls?.isLocked) {
+            state.walkAudio.volume = SETTINGS.walkVolume * state.masterVolume;
             if (state.walkAudio.paused) state.walkAudio.play().catch(() => {});
         } else {
             state.walkAudio.pause();
@@ -96,7 +97,7 @@ export function updateSounds(isObservingEnemy, distToEnemy) {
     }
     if (state.heartbeatAudio) {
         if (playHeartbeat) {
-            state.heartbeatAudio.volume = heartbeatVol;
+            state.heartbeatAudio.volume = heartbeatVol * state.masterVolume;
             if (state.heartbeatAudio.paused) state.heartbeatAudio.play().catch(() => {});
         } else {
             state.heartbeatAudio.pause();
@@ -113,7 +114,7 @@ export function updateSounds(isObservingEnemy, distToEnemy) {
 
     if (state.breathingAudio) {
         if (playBreathing) {
-            state.breathingAudio.volume = breathingVol;
+            state.breathingAudio.volume = breathingVol * state.masterVolume;
             if (state.breathingAudio.paused) state.breathingAudio.play().catch(() => {});
         } else {
             state.breathingAudio.pause();
@@ -132,6 +133,7 @@ export function stopAllSounds() {
 export function playStareSound() {
     if (!state.audioUnlocked) return;
     if (state.stareAudio && state.stareAudio.paused) {
+        state.stareAudio.volume = 0.9 * state.masterVolume;
         state.stareAudio.currentTime = 0;
         state.stareAudio.play().catch(() => {});
     }
@@ -142,11 +144,15 @@ export function stopStareSound() {
 }
 
 export function playJumpscare() {
-    state.jumpscareAudio?.play().catch(() => {});
+    if (state.jumpscareAudio) {
+        state.jumpscareAudio.volume = 1.0 * state.masterVolume;
+        state.jumpscareAudio.play().catch(() => {});
+    }
 }
 
 export function playNeckSnap() {
     if (state.neckSnapAudio) {
+        state.neckSnapAudio.volume = 1.0 * state.masterVolume;
         state.neckSnapAudio.currentTime = 0;
         state.neckSnapAudio.play().catch(() => {});
     }
