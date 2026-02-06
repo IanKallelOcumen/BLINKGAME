@@ -26,7 +26,11 @@ function startGame() {
     if (state.hasStarted) return;
     state.hasStarted = true;
     unlockAudio();
-    dom('start-screen')?.classList.add('hidden');
+    const startScreen = dom('start-screen');
+    if (startScreen) {
+        startScreen.classList.add('hidden');
+        startScreen.style.display = 'none';
+    }
     setTimeout(() => {
         dom('controls-hint-overlay')?.classList.add('hidden');
     }, 5000);
@@ -309,6 +313,11 @@ function init() {
 
     dom('start-btn')?.addEventListener('click', (e) => {
         e.stopPropagation();
+        startGame();
+    });
+
+    dom('start-screen')?.addEventListener('click', (e) => {
+        if (e.target && e.target.id === 'start-btn') return;
         startGame();
     });
 
