@@ -23,8 +23,9 @@ export function updateMinimap() {
     ctx.strokeRect(0, 0, w, h);
 
     const worldSize = 100;
+    // Flip X so that when you move left (A) the dot moves left on the minimap
     const worldToMap = (x, z) => {
-        const mx = ((x + worldSize / 2) / worldSize) * w;
+        const mx = w - ((x + worldSize / 2) / worldSize) * w;
         const my = h - ((z + worldSize / 2) / worldSize) * h;
         return { mx, my };
     };
