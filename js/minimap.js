@@ -1,9 +1,12 @@
 /**
- * Minimap rendering (no enemy icon - player, walls, artifacts, exit only)
+ * Minimap rendering (no enemy icon - player, walls, artifacts, exit only).
+ * Rotating mode: player at center, forward = up.
  */
 import * as THREE from 'three';
 import { SETTINGS } from './config.js';
 import { state } from './state.js';
+
+const MINIMAP_RADIUS_WORLD = 28;
 
 export function updateMinimap() {
     if (state.isGameOver) return;
@@ -15,6 +18,9 @@ export function updateMinimap() {
 
     const w = canvas.width;
     const h = canvas.height;
+    const cx = w / 2;
+    const cy = h / 2;
+    const scale = Math.min(w, h) / (2 * MINIMAP_RADIUS_WORLD);
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
     ctx.fillRect(0, 0, w, h);
@@ -22,37 +28,43 @@ export function updateMinimap() {
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, w, h);
 
-    const worldSize = 100;
-    // Flip X so that when you move left (A) the dot moves left on the minimap
-    const worldToMap = (x, z) => {
-        const mx = w - ((x + worldSize / 2) / worldSize) * w;
-        const my = h - ((z + worldSize / 2) / worldSize) * h;
+    const px = state.camera.position.x;
+    const pz = state.camera.position.z;
+    const forward = new THREE.Vector3();
+    state.camera.getWorldDirection(forward);
+    // Yaw so that (forward.x, forward.z) maps to (0, 1) in map space -> up on screen
+    const yaw = Math.atan2(-forward.x, forward.z);
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
+
+    const worldToMap = (wx, wz) => {
+        const dx = wx - px;
+        const dz = wz - pz;
+        const rx = dx * cos + dz * sin;
+        const rz = -dx * sin + dz * cos;
+        const mx = cx + rx * scale;
+        const my = cy - rz * scale;
         return { mx, my };
     };
+
+    const inBounds = (mx, my) => mx >= -10 && mx <= w + 10 && my >= -10 && my <= h + 10;
 
     ctx.fillStyle = '#555555';
     state.walls.forEach((wall) => {
         const m = worldToMap(wall.position.x, wall.position.z);
+        if (!inBounds(m.mx, m.my)) return;
         const size = 5;
         ctx.fillRect(m.mx - size / 2, m.my - size / 2, size, size);
     });
 
-    const pPos = state.camera.position;
-    const p = worldToMap(pPos.x, pPos.z);
+    const p = { mx: cx, my: cy };
 
-    const forward = new THREE.Vector3();
-    state.camera.getWorldDirection(forward);
-    const angle = Math.atan2(-forward.z, forward.x);
     const arrowLength = 12;
-
     ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(p.mx, p.my);
-    ctx.lineTo(
-        p.mx + Math.cos(angle) * arrowLength,
-        p.my + Math.sin(angle) * arrowLength
-    );
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx, cy - arrowLength);
     ctx.stroke();
 
     ctx.fillStyle = '#ffffff';
@@ -68,6 +80,7 @@ export function updateMinimap() {
     ctx.lineWidth = 1;
     (state.artifacts || []).forEach((art) => {
         const a = worldToMap(art.position.x, art.position.z);
+        if (!inBounds(a.mx, a.my)) return;
         ctx.beginPath();
         ctx.arc(a.mx, a.my, 4, 0, Math.PI * 2);
         ctx.fill();
@@ -76,11 +89,13 @@ export function updateMinimap() {
 
     if (state.exitDoor && state.exitDoor.visible) {
         const d = worldToMap(state.exitDoor.position.x, state.exitDoor.position.z);
-        ctx.fillStyle = '#00ff88';
-        ctx.strokeStyle = '#00ff88';
-        ctx.lineWidth = 2;
-        const size = 8;
-        ctx.fillRect(d.mx - size / 2, d.my - size / 2, size, size);
-        ctx.strokeRect(d.mx - size / 2, d.my - size / 2, size, size);
+        if (inBounds(d.mx, d.my)) {
+            ctx.fillStyle = '#00ff88';
+            ctx.strokeStyle = '#00ff88';
+            ctx.lineWidth = 2;
+            const size = 8;
+            ctx.fillRect(d.mx - size / 2, d.my - size / 2, size, size);
+            ctx.strokeRect(d.mx - size / 2, d.my - size / 2, size, size);
+        }
     }
 }

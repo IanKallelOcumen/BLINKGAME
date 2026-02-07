@@ -9,8 +9,98 @@ import { findPath } from './pathfinding.js';
 
 const PATH_UPDATE_INTERVAL = 0.2;
 
+const ARTIFACT_TARGET_SIZE = 0.8;
+
+function scaleToSize(obj, targetSize) {
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+    const scale = targetSize / maxDim;
+    obj.scale.setScalar(scale);
+}
+
+function applyPurpleGemMaterial(model) {
+    model.traverse((child) => {
+        if (child.isMesh && child.material) {
+            child.material = new THREE.MeshStandardMaterial({
+                color: 0x8844cc,
+                emissive: 0x4400aa,
+                emissiveIntensity: 0.5,
+                roughness: 0.25,
+                metalness: 0.6,
+            });
+        }
+    });
+}
+
 export function loadGameAssets(hideLoading) {
     const loader = new GLTFLoader();
+    const passages = [...(state.mazePassagePositions || [])];
+    const artifactPositions = [];
+    for (let i = 0; i < 5 && passages.length > 0; i++) {
+        const idx = Math.floor(Math.random() * passages.length);
+        artifactPositions.push(passages.splice(idx, 1)[0]);
+    }
+
+    let pending = 2;
+    const onLoaded = () => {
+        pending--;
+        if (pending <= 0) hideLoading();
+    };
+
+    if (ASSETS.artifact) {
+        loader.load(
+            ASSETS.artifact,
+            (gltf) => {
+                const template = gltf.scene;
+                scaleToSize(template, ARTIFACT_TARGET_SIZE);
+                applyPurpleGemMaterial(template);
+                const glowLight = new THREE.PointLight(0xaa66ff, 2, 6, 1.5);
+                glowLight.position.set(0, 0, 0);
+                template.add(glowLight);
+                artifactPositions.forEach((pos) => {
+                    const mesh = template.clone(true);
+                    setupArtifact(mesh, pos);
+                });
+                onLoaded();
+            },
+            undefined,
+            () => {
+                const artifactGeo = new THREE.SphereGeometry(0.4, 16, 16);
+                const artifactMat = new THREE.MeshStandardMaterial({
+                    color: 0x8844cc,
+                    emissive: 0x4400aa,
+                    emissiveIntensity: 0.5,
+                    roughness: 0.25,
+                    metalness: 0.6,
+                });
+                artifactPositions.forEach((pos) => {
+                    const mesh = new THREE.Mesh(artifactGeo, artifactMat);
+                    const glowLight = new THREE.PointLight(0xaa66ff, 2, 6, 1.5);
+                    mesh.add(glowLight);
+                    setupArtifact(mesh, pos);
+                });
+                onLoaded();
+            }
+        );
+    } else {
+        const artifactGeo = new THREE.SphereGeometry(0.4, 16, 16);
+        const artifactMat = new THREE.MeshStandardMaterial({
+            color: 0x8844cc,
+            emissive: 0x4400aa,
+            emissiveIntensity: 0.5,
+            roughness: 0.25,
+            metalness: 0.6,
+        });
+        artifactPositions.forEach((pos) => {
+            const mesh = new THREE.Mesh(artifactGeo, artifactMat);
+            const glowLight = new THREE.PointLight(0xaa66ff, 2, 6, 1.5);
+            mesh.add(glowLight);
+            setupArtifact(mesh, pos);
+        });
+        pending--;
+    }
 
     loader.load(
         ASSETS.enemy,
@@ -18,7 +108,7 @@ export function loadGameAssets(hideLoading) {
             state.pendingEnemyModel = gltf.scene;
             applyEnemyTexture(state.pendingEnemyModel);
             prepareEnemy(state.pendingEnemyModel);
-            hideLoading();
+            onLoaded();
         },
         undefined,
         (err) => {
@@ -28,33 +118,9 @@ export function loadGameAssets(hideLoading) {
             const mesh = new THREE.Mesh(geo, mat);
             state.pendingEnemyModel = mesh;
             prepareEnemy(mesh);
-            hideLoading();
+            onLoaded();
         }
     );
-
-    const passages = [...(state.mazePassagePositions || [])];
-    const positions = [];
-    for (let i = 0; i < 5 && passages.length > 0; i++) {
-        const idx = Math.floor(Math.random() * passages.length);
-        positions.push(passages.splice(idx, 1)[0]);
-    }
-
-    const artifactGeo = new THREE.SphereGeometry(0.4, 16, 16);
-    const artifactMat = new THREE.MeshStandardMaterial({
-        color: 0x00ffff,
-        emissive: 0x00aaff,
-        emissiveIntensity: 0.6,
-        roughness: 0.2,
-        metalness: 0.5,
-    });
-
-    positions.forEach((pos) => {
-        const mesh = new THREE.Mesh(artifactGeo, artifactMat);
-        const glowLight = new THREE.PointLight(0x00ffff, 2, 6, 1.5);
-        glowLight.position.set(0, 0, 0);
-        mesh.add(glowLight);
-        setupArtifact(mesh, pos);
-    });
 }
 
 function applyEnemyTexture(model) {
@@ -182,6 +248,8 @@ export function spawnEnemy() {
     group.userData.meshRoot = group;
     state.enemyModel = group;
     state.enemyPath = null;
+    state.enemyLastKnownPlayerPos = state.camera.position.clone();
+    state.enemyLastKnownTime = performance.now() * 0.001;
     state.scene.add(state.enemyModel);
     state.pendingEnemyModel = null;
 }
@@ -200,7 +268,7 @@ function createArtifactParticles(artifact) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     const mat = new THREE.PointsMaterial({
-        color: 0x00ffff,
+        color: 0xaa66ff,
         size: 0.08,
         transparent: true,
         opacity: 0.8,
@@ -263,7 +331,17 @@ export function moveEnemyStep(maxStep, deltaTime) {
 
     const dt = deltaTime || 0;
     const now = performance.now() * 0.001;
-    const teleCooldown = SETTINGS.teleportCooldown ?? 25;
+    const memoryDecay = Math.max(2, (SETTINGS.enemyMemoryDecayTime ?? 5) + state.artifactsCollected * (SETTINGS.enemyMemoryDecayPerArtifact ?? 0));
+    const lastKnown = state.enemyLastKnownPlayerPos;
+    const lastKnownFresh = lastKnown && (now - (state.enemyLastKnownTime || 0)) < memoryDecay;
+    const sprinting = state.isSprinting && (state.moveForward || state.moveBackward || state.moveLeft || state.moveRight);
+    const huntTarget = sprinting || !lastKnownFresh
+        ? pPos
+        : lastKnown;
+    const huntX = huntTarget.x;
+    const huntZ = huntTarget.z;
+
+    const teleCooldown = Math.max(10, (SETTINGS.teleportCooldown ?? 25) + state.artifactsCollected * (SETTINGS.teleportCooldownPerArtifact ?? 0));
     const canTeleport = (now - (state.enemyLastTeleportTime || 0)) >= teleCooldown;
     if (canTeleport && Math.random() < 0.0015) {
         const tele = getTeleportScarePosition();
@@ -274,13 +352,14 @@ export function moveEnemyStep(maxStep, deltaTime) {
         }
     }
     state.enemyPathTime = (state.enemyPathTime || 0) + dt;
+    const distToHunt = ePos.distanceTo(new THREE.Vector3(huntX, 0, huntZ));
     const stuckThrottle = (state.enemyStuckFrames || 0) > 5 ? STUCK_PATH_THROTTLE : 1;
-    const farThrottle = distanceBefore > 25 ? 1.5 : 1;
-    const closeThrottle = distanceBefore < 5 ? 4 : distanceBefore < 10 ? 2.2 : 1;
-    const useDirectMovement = distanceBefore < 3.5;
+    const farThrottle = distToHunt > 25 ? 1.5 : 1;
+    const closeThrottle = distToHunt < 5 ? 4 : distToHunt < 10 ? 2.2 : 1;
+    const useDirectMovement = distToHunt < 3.5;
     const pathStale = !useDirectMovement && (!state.enemyPath || state.enemyPath.length === 0 || state.enemyPathTime > PATH_UPDATE_INTERVAL * stuckThrottle * farThrottle * closeThrottle);
     if (pathStale) {
-        state.enemyPath = findPath(ePos.x, ePos.z, pPos.x, pPos.z);
+        state.enemyPath = findPath(ePos.x, ePos.z, huntX, huntZ);
         state.enemyPathTime = 0;
     }
     if (useDirectMovement) {
@@ -302,10 +381,10 @@ export function moveEnemyStep(maxStep, deltaTime) {
     }
 
     if (targetX === null || targetZ === null) {
-        const dirToPlayer = new THREE.Vector3(pPos.x - ePos.x, 0, pPos.z - ePos.z);
-        if (dirToPlayer.length() >= 0.01) {
-            dirToPlayer.normalize();
-            const fallbackPos = tryFindValidStep(ePos, dirToPlayer, maxStep);
+        const dirToHunt = new THREE.Vector3(huntX - ePos.x, 0, huntZ - ePos.z);
+        if (dirToHunt.length() >= 0.01) {
+            dirToHunt.normalize();
+            const fallbackPos = tryFindValidStep(ePos, dirToHunt, maxStep);
             if (fallbackPos) {
                 targetX = fallbackPos.x;
                 targetZ = fallbackPos.z;
@@ -323,11 +402,12 @@ export function moveEnemyStep(maxStep, deltaTime) {
 
     dir.normalize();
 
+    const distToHuntTarget = ePos.distanceTo(new THREE.Vector3(targetX, 0, targetZ));
     let targetDistance = distanceBefore - maxStep;
     if (distanceBefore > SETTINGS.minEnemyDistance + SETTINGS.catchDistance) {
         targetDistance = Math.max(targetDistance, SETTINGS.minEnemyDistance * 0.8);
     }
-    const step = Math.min(maxStep, len, Math.max(0, distanceBefore - targetDistance));
+    const step = Math.min(maxStep, len, Math.max(0, distToHuntTarget - 0.2));
 
     const beforeMove = state.enemyModel.position.clone();
     if (step > 0) {
@@ -344,8 +424,8 @@ export function moveEnemyStep(maxStep, deltaTime) {
                 slidePos = tryFindValidStep(ePos, dirToTarget, maxStep * 0.6);
             }
             if (!slidePos) {
-                const towardPlayer = new THREE.Vector3(pPos.x - ePos.x, 0, pPos.z - ePos.z).normalize();
-                slidePos = tryFindValidStep(ePos, towardPlayer, maxStep * 0.5);
+                const towardHunt = new THREE.Vector3(huntX - ePos.x, 0, huntZ - ePos.z).normalize();
+                if (towardHunt.length() > 0.01) slidePos = tryFindValidStep(ePos, towardHunt, maxStep * 0.5);
             }
             if (slidePos) {
                 state.enemyModel.position.copy(slidePos);

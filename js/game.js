@@ -11,7 +11,7 @@ import {
     DEATH_DURATION,
 } from './config.js';
 import { state } from './state.js';
-import { initAudio, unlockAudio, startRoomTone, updateSounds, stopAllSounds, stopStareSound, playStareSound, playJumpscare, playNeckSnap, playArtifactPickup } from './audio.js';
+import { initAudio, unlockAudio, startRoomTone, updateSounds, stopAllSounds, stopStareSound, playStareSound, playJumpscare, playNeckSnap, playArtifactPickup, playExitUnlocked } from './audio.js';
 import { generateLevel } from './level.js';
 import { loadGameAssets, moveEnemyStep, enemyIsObserved, spawnEnemy } from './enemy.js';
 import { updateMinimap } from './minimap.js';
@@ -63,11 +63,11 @@ function performBlink(refill) {
 }
 
 function collidesWithWalls(pos) {
+    const wallCollisionHalf = 1.5;
     for (const w of state.walls) {
         const dx = pos.x - w.position.x;
         const dz = pos.z - w.position.z;
-        const halfSize = 1.6;
-        if (Math.abs(dx) < halfSize + PLAYER_RADIUS && Math.abs(dz) < halfSize + PLAYER_RADIUS) {
+        if (Math.abs(dx) < wallCollisionHalf && Math.abs(dz) < wallCollisionHalf) {
             return true;
         }
     }
@@ -124,7 +124,7 @@ function checkArtifacts() {
             counterEl.innerText = `Artifacts: ${state.artifactsCollected}/${SETTINGS.totalArtifacts}`;
         }
         if (
-            state.artifactsCollected === 2 &&
+            state.artifactsCollected === 1 &&
             state.pendingEnemyModel &&
             !state.enemyModel
         ) {
@@ -140,12 +140,17 @@ function checkArtifacts() {
                 }, 3000);
             }
         }
+        const refill = SETTINGS.artifactBlinkRefill ?? 0;
+        if (refill > 0) {
+            state.blinkLevel = Math.min(100, state.blinkLevel + refill);
+        }
         if (
             state.artifactsCollected === SETTINGS.totalArtifacts &&
             state.exitDoor &&
             !state.exitDoor.visible
         ) {
             state.exitDoor.visible = true;
+            playExitUnlocked();
             const txt = dom('center-text');
             if (txt && !state.isGameOver) {
                 txt.innerText = 'THE EXIT IS OPEN';
@@ -175,6 +180,8 @@ function respawnPlayer() {
     state.velocity.set(0, 0, 0);
     state.staminaLevel = 100;
     state.blinkLevel = 100;
+    state.flashlightOn = true;
+    state.flashlightDim = 0;
     state.jumpscarePhase = 'none';
     if (state.enemyModel) {
         state.enemyModel.position.set(
@@ -184,7 +191,7 @@ function respawnPlayer() {
         );
         state.enemyPath = null;
     }
-    const meters = dom('meters-row');
+    const meters = dom('meters-panel');
     if (meters) meters.style.display = '';
     const mm = dom('minimap');
     if (mm) mm.style.display = '';
@@ -210,7 +217,7 @@ function triggerCaught() {
     playNeckSnap();
     state.controls.unlock();
 
-    const meters = dom('meters-row');
+    const meters = dom('meters-panel');
     if (meters) meters.style.display = 'none';
     const mm = dom('minimap');
     if (mm) mm.style.display = 'none';
@@ -335,10 +342,28 @@ function init() {
         }
     }, { passive: true });
 
+    const volumeBar = dom('volume-bar');
+    if (volumeBar) {
+        volumeBar.addEventListener('click', (e) => {
+            const rect = volumeBar.getBoundingClientRect();
+            const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            state.masterVolume = frac;
+            updateVolumeDisplay();
+        });
+    }
+
     document.addEventListener('click', () => {
         if (dom('start-screen')?.classList.contains('hidden')) {
             state.controls.lock();
             unlockAudio();
+        }
+    });
+
+    document.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        if (state.controls?.isLocked && state.hasStarted && !state.isGameOver && state.jumpscarePhase === 'none') {
+            state.flashlightOn = !state.flashlightOn;
+            e.preventDefault();
         }
     });
 
@@ -386,10 +411,6 @@ function init() {
                 break;
             case 'Space':
                 performBlink(true);
-                e.preventDefault();
-                break;
-            case 'KeyF':
-                refreshFlashlight(0.2);
                 e.preventDefault();
                 break;
             case 'Equal':
@@ -484,20 +505,32 @@ function updateFlashlightAndTimer() {
     }
     state.lastCameraY = state.camera.position.y;
 
-    state.flashlightDim += 0.0005;
-    const intensity = Math.max(2, state.flashlightIntensity * (1 - Math.min(1, state.flashlightDim)));
+    const drainRate = SETTINGS.flashlightDrainRate ?? 0.0005;
+    const recoverRate = SETTINGS.flashlightRecoverRate ?? 0.0003;
+    if (state.flashlightOn) {
+        state.flashlightDim += drainRate;
+    } else {
+        state.flashlightDim = Math.max(0, state.flashlightDim - recoverRate);
+    }
+    state.flashlightDim = Math.min(1, state.flashlightDim);
+    const intensity = state.flashlightOn
+        ? Math.max(2, state.flashlightIntensity * (1 - Math.min(1, state.flashlightDim)))
+        : 0;
     if (state.flashlight) state.flashlight.intensity = intensity;
 }
 
-function refreshFlashlight(amount = 0.2) {
-    state.flashlightDim = Math.max(0, state.flashlightDim - amount);
-}
 
 function updateVolumeDisplay() {
     const fill = dom('volume-fill');
     if (fill) {
         fill.style.width = (state.masterVolume * 100) + '%';
     }
+    // Apply master volume so scroll/keys affect all sounds live (breathing/heartbeat updated in updateSounds)
+    if (state.roomToneAudio) state.roomToneAudio.volume = (SETTINGS.roomToneVolume ?? 0.5) * state.masterVolume;
+    if (state.walkAudio) state.walkAudio.volume = SETTINGS.walkVolume * state.masterVolume;
+    if (state.jumpscareAudio) state.jumpscareAudio.volume = 1.0 * state.masterVolume;
+    if (state.neckSnapAudio) state.neckSnapAudio.volume = 1.0 * state.masterVolume;
+    if (state.stareAudio) state.stareAudio.volume = 0.9 * state.masterVolume;
 }
 
 function animate() {
@@ -556,6 +589,9 @@ function animate() {
         } else if (!isMoving) {
             state.staminaLevel += delta * SETTINGS.staminaRegen;
             if (state.staminaLevel > 100) state.staminaLevel = 100;
+        } else if (isMoving && (SETTINGS.staminaRegenWalking ?? 0) > 0) {
+            state.staminaLevel += delta * (SETTINGS.staminaRegenWalking ?? 0);
+            if (state.staminaLevel > 100) state.staminaLevel = 100;
         }
 
         const oldPos = state.camera.position.clone();
@@ -609,6 +645,11 @@ function animate() {
             blinkContainer.classList.toggle('low', state.blinkLevel <= 25);
             blinkContainer.classList.remove('regen');
         }
+        const flashlightCharge = Math.max(0, Math.min(100, (1 - state.flashlightDim) * 100));
+        const flashlightFill = dom('flashlight-meter-fill');
+        const flashlightContainer = dom('flashlight-meter-container');
+        if (flashlightFill) flashlightFill.style.width = flashlightCharge + '%';
+        if (flashlightContainer) flashlightContainer.classList.toggle('low', flashlightCharge <= 25);
 
         let distToEnemy = Infinity;
         if (state.enemyModel) {
@@ -618,6 +659,8 @@ function animate() {
 
             if (observed) {
                 state.enemyWasObserved = true;
+                state.enemyLastKnownPlayerPos = state.camera.position.clone();
+                state.enemyLastKnownTime = performance.now() * 0.001;
             }
             if (observed && distToEnemy < SETTINGS.stareKillDistance) {
                 state.lookingAtMonsterTime = (state.lookingAtMonsterTime || 0) + delta;
@@ -639,6 +682,11 @@ function animate() {
                         crazy.classList.toggle('visible', effectProgress > 0);
                         crazy.classList.toggle('shake', effectProgress > 0.4);
                     }
+                    const stareWarning = dom('stare-warning');
+                    const warnThreshold = SETTINGS.stareWarningThreshold ?? 0.5;
+                    if (stareWarning) {
+                        stareWarning.classList.toggle('visible', effectProgress >= warnThreshold && effectProgress < 0.95);
+                    }
                     if (effectProgress > 0) playStareSound();
                     const vp = dom('game-viewport');
                     if (vp && effectProgress > 0) {
@@ -658,6 +706,7 @@ function animate() {
                     vig.classList.remove('active');
                     vig.style.opacity = '0';
                 }
+                dom('stare-warning')?.classList.remove('visible');
                 const crazy = dom('stare-crazy');
                 if (crazy) { crazy.classList.remove('visible'); crazy.classList.remove('shake'); }
                 const vp = dom('game-viewport');
@@ -679,6 +728,7 @@ function animate() {
             stopStareSound();
             const vig = dom('stare-vignette');
             if (vig) { vig.classList.remove('active'); vig.style.opacity = '0'; }
+            dom('stare-warning')?.classList.remove('visible');
             const crazy = dom('stare-crazy');
             if (crazy) { crazy.classList.remove('visible'); crazy.classList.remove('shake'); }
             const vp = dom('game-viewport');
@@ -690,7 +740,8 @@ function animate() {
             const prevObserved = state.enemyWasObserved;
             state.enemyWasObserved = false;
             if (prevObserved && state.enemyModel) {
-                state.enemyBurstTime = SETTINGS.enemyBurstDuration;
+                const burstDur = SETTINGS.enemyBurstDuration + state.artifactsCollected * (SETTINGS.enemyBurstDurationPerArtifact ?? 0);
+                state.enemyBurstTime = Math.max(SETTINGS.enemyBurstDuration, burstDur);
             }
             if (state.enemyBurstTime > 0) {
                 state.enemyBurstTime -= delta;

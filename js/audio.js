@@ -67,6 +67,11 @@ export function unlockAudio() {
 export function updateSounds(isObservingEnemy, distToEnemy) {
     if (!state.audioUnlocked || state.isGameOver) return;
 
+    // Keep room tone tied to master volume when playing
+    if (state.roomToneAudio && !state.roomToneAudio.paused) {
+        state.roomToneAudio.volume = (SETTINGS.roomToneVolume ?? 0.5) * state.masterVolume;
+    }
+
     const isMoving = state.moveForward || state.moveBackward || state.moveLeft || state.moveRight;
 
     if (state.walkAudio) {
@@ -98,6 +103,9 @@ export function updateSounds(isObservingEnemy, distToEnemy) {
     if (state.heartbeatAudio) {
         if (playHeartbeat) {
             state.heartbeatAudio.volume = heartbeatVol * state.masterVolume;
+            const closeThreshold = SETTINGS.heartbeatCloseThreshold ?? 1.8;
+            const rateClose = SETTINGS.heartbeatPlaybackRateClose ?? 2.0;
+            state.heartbeatAudio.playbackRate = (state.enemyModel && distToEnemy !== undefined && distToEnemy < closeThreshold) ? rateClose : 1.0;
             if (state.heartbeatAudio.paused) state.heartbeatAudio.play().catch(() => {});
         } else {
             state.heartbeatAudio.pause();
@@ -169,9 +177,32 @@ export function playArtifactPickup() {
         osc.frequency.setValueAtTime(880, ctx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.08);
         osc.type = 'sine';
-        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+        const vol = Math.max(0.01, 0.25 * (state.masterVolume ?? 1));
+        gain.gain.setValueAtTime(vol, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
         osc.start(ctx.currentTime);
         osc.stop(ctx.currentTime + 0.15);
+    } catch (_) {}
+}
+
+export function playExitUnlocked() {
+    if (!state.audioUnlocked) return;
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const vol = Math.max(0.01, 0.2 * (state.masterVolume ?? 1));
+        const t0 = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523, t0);
+        osc.frequency.setValueAtTime(659, t0 + 0.12);
+        gain.gain.setValueAtTime(0, t0);
+        gain.gain.linearRampToValueAtTime(vol, t0 + 0.05);
+        gain.gain.setValueAtTime(vol, t0 + 0.12);
+        gain.gain.linearRampToValueAtTime(0, t0 + 0.35);
+        osc.start(t0);
+        osc.stop(t0 + 0.35);
     } catch (_) {}
 }
