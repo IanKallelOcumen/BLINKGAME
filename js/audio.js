@@ -54,7 +54,7 @@ export function initAudio() {
 
 export function startRoomTone() {
     if (!state.audioUnlocked || !state.roomToneAudio) return;
-    state.roomToneAudio.volume = (SETTINGS.roomToneVolume ?? 0.5) * state.masterVolume;
+    state.roomToneAudio.volume = (SETTINGS.roomToneVolume ?? 0.5) * (state.masterVolume ?? 1);
     if (state.roomToneAudio.paused) {
         state.roomToneAudio.play().catch(() => {});
     }

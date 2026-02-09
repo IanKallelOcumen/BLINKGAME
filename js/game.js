@@ -41,6 +41,9 @@ function startGame() {
 }
 
 function hideLoading() {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/df00b495-a20e-4eae-9d8e-a4e922ffc4ab',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'game.js:hideLoading',message:'hideLoading called',data:{},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     dom('loading-overlay')?.classList.add('hidden');
 }
 
@@ -527,17 +530,25 @@ function updateFlashlightAndTimer() {
 }
 
 
+let _volumeDisplayLoggedOnce = false;
 function updateVolumeDisplay() {
+    const masterVol = state.masterVolume ?? 1;
+    // #region agent log
+    if (!_volumeDisplayLoggedOnce) {
+        _volumeDisplayLoggedOnce = true;
+        fetch('http://127.0.0.1:7242/ingest/df00b495-a20e-4eae-9d8e-a4e922ffc4ab',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'game.js:updateVolumeDisplay',message:'volume display first run',data:{masterVol,isNumber:typeof masterVol==='number'},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    }
+    // #endregion
     const fill = dom('volume-fill');
     if (fill) {
-        fill.style.width = (state.masterVolume * 100) + '%';
+        fill.style.width = (masterVol * 100) + '%';
     }
     // Apply master volume so scroll/keys affect all sounds live (breathing/heartbeat updated in updateSounds)
-    if (state.roomToneAudio) state.roomToneAudio.volume = (SETTINGS.roomToneVolume ?? 0.5) * state.masterVolume;
-    if (state.walkAudio) state.walkAudio.volume = SETTINGS.walkVolume * state.masterVolume;
-    if (state.jumpscareAudio) state.jumpscareAudio.volume = 1.0 * state.masterVolume;
-    if (state.neckSnapAudio) state.neckSnapAudio.volume = 1.0 * state.masterVolume;
-    if (state.stareAudio) state.stareAudio.volume = 0.9 * state.masterVolume;
+    if (state.roomToneAudio) state.roomToneAudio.volume = (SETTINGS.roomToneVolume ?? 0.5) * masterVol;
+    if (state.walkAudio) state.walkAudio.volume = (SETTINGS.walkVolume ?? 0.35) * masterVol;
+    if (state.jumpscareAudio) state.jumpscareAudio.volume = 1.0 * masterVol;
+    if (state.neckSnapAudio) state.neckSnapAudio.volume = 1.0 * masterVol;
+    if (state.stareAudio) state.stareAudio.volume = 0.9 * masterVol;
 }
 
 function animate() {
