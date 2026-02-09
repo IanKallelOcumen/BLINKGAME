@@ -63,7 +63,7 @@ function performBlink(refill) {
 }
 
 function collidesWithWalls(pos) {
-    const wallCollisionHalf = 1.5;
+    const wallCollisionHalf = 1.8;
     for (const w of state.walls) {
         const dx = pos.x - w.position.x;
         const dz = pos.z - w.position.z;
