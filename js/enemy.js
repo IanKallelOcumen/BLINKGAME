@@ -314,6 +314,7 @@ function setupArtifact(model, pos) {
 const ENEMY_RADIUS = 0.45;
 
 function enemyCollidesWithWalls(pos) {
+    if (!state.walls || state.walls.length === 0) return false;
     for (const w of state.walls) {
         const dx = pos.x - w.position.x;
         const dz = pos.z - w.position.z;

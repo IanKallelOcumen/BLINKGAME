@@ -37,7 +37,7 @@ function startGame() {
     setTimeout(() => {
         dom('controls-hint-overlay')?.classList.add('hidden');
     }, 5000);
-    state.controls.lock();
+    state.controls?.lock();
 }
 
 function hideLoading() {
@@ -66,15 +66,43 @@ function performBlink(refill) {
 }
 
 const WALL_HALF_SIZE = 2;
+const WALL_THRESHOLD = WALL_HALF_SIZE + PLAYER_RADIUS + 0.08; // extra margin to prevent tunnel-through
+
+function pointInsideWallBox(px, pz, wx, wz) {
+    return Math.abs(px - wx) <= WALL_THRESHOLD && Math.abs(pz - wz) <= WALL_THRESHOLD;
+}
 
 function collidesWithWalls(pos) {
-    const threshold = WALL_HALF_SIZE + PLAYER_RADIUS;
+    if (!state.walls || state.walls.length === 0) return false;
     for (const w of state.walls) {
-        const dx = pos.x - w.position.x;
-        const dz = pos.z - w.position.z;
-        if (Math.abs(dx) < threshold && Math.abs(dz) < threshold) {
-            return true;
-        }
+        if (pointInsideWallBox(pos.x, pos.z, w.position.x, w.position.z)) return true;
+    }
+    return false;
+}
+
+function segmentCollidesWithWalls(fromPos, toPos) {
+    if (!state.walls || state.walls.length === 0) return false;
+    const ax = fromPos.x, az = fromPos.z;
+    const bx = toPos.x, bz = toPos.z;
+    for (const w of state.walls) {
+        const wx = w.position.x, wz = w.position.z;
+        if (pointInsideWallBox(ax, az, wx, wz) || pointInsideWallBox(bx, bz, wx, wz)) return true;
+        const minX = wx - WALL_THRESHOLD, maxX = wx + WALL_THRESHOLD;
+        const minZ = wz - WALL_THRESHOLD, maxZ = wz + WALL_THRESHOLD;
+        const dx = bx - ax, dz = bz - az;
+        let t0 = 0, t1 = 1;
+        if (Math.abs(dx) >= 1e-9) {
+            const tx0 = (minX - ax) / dx, tx1 = (maxX - ax) / dx;
+            t0 = Math.max(t0, Math.min(tx0, tx1));
+            t1 = Math.min(t1, Math.max(tx0, tx1));
+        } else if (ax < minX || ax > maxX) continue;
+        if (t0 > t1) continue;
+        if (Math.abs(dz) >= 1e-9) {
+            const tz0 = (minZ - az) / dz, tz1 = (maxZ - az) / dz;
+            t0 = Math.max(t0, Math.min(tz0, tz1));
+            t1 = Math.min(t1, Math.max(tz0, tz1));
+        } else if (az < minZ || az > maxZ) continue;
+        if (t0 <= t1 && t1 >= 0 && t0 <= 1) return true;
     }
     return false;
 }
@@ -214,18 +242,19 @@ function respawnPlayer() {
     dom('controls-hint-overlay')?.classList.remove('hidden');
     const dol = dom('death-overlay');
     if (dol) dol.style.opacity = '0';
-    state.controls.lock();
+    state.controls?.lock();
 }
 
 function triggerCaught() {
     if (state.jumpscarePhase !== 'none') return;
+    if (!state.camera) return;
     state.jumpscarePhase = 'jumpscare';
     state.jumpscareStartTime = performance.now();
     state.deathCameraPitch = state.camera.rotation.x;
 
     stopAllSounds();
     playNeckSnap();
-    state.controls.unlock();
+    state.controls?.unlock();
 
     const meters = dom('meters-panel');
     if (meters) meters.style.display = 'none';
@@ -364,7 +393,7 @@ function init() {
 
     document.addEventListener('click', () => {
         if (dom('start-screen')?.classList.contains('hidden')) {
-            state.controls.lock();
+            state.controls?.lock();
             unlockAudio();
         }
     });
@@ -379,8 +408,8 @@ function init() {
 
     // Re-lock pointer if it escapes during gameplay
     document.addEventListener('pointerlockchange', () => {
-        if (state.hasStarted && !state.isGameOver && !state.controls.isLocked && state.jumpscarePhase === 'none') {
-            state.controls.lock();
+        if (state.hasStarted && !state.isGameOver && !state.controls?.isLocked && state.jumpscarePhase === 'none') {
+            state.controls?.lock();
         }
     });
 
@@ -573,7 +602,7 @@ function animate() {
         return;
     }
 
-    if (state.controls.isLocked && !state.isGameOver) {
+    if (state.controls?.isLocked && !state.isGameOver) {
         const time = performance.now();
         let delta = (time - state.prevTime) / 1000;
         if (delta > MAX_DELTA) delta = MAX_DELTA;
@@ -617,9 +646,8 @@ function animate() {
         state.controls.moveRight(-state.velocity.x * delta);
         state.controls.moveForward(-state.velocity.z * delta);
 
-        const newPos = state.camera.position;
-        const hitWall = collidesWithWalls(newPos);
-        const hitEnemy = collidesWithEnemy(newPos);
+        const hitWall = segmentCollidesWithWalls(oldPos, state.camera.position);
+        const hitEnemy = collidesWithEnemy(state.camera.position);
 
         const observed = state.isBlinking ? false : enemyIsObserved();
 
@@ -778,26 +806,29 @@ function animate() {
         updateSounds(observed, state._distToEnemy ?? Infinity);
 
         // Update exit door particles and glow
-        if (state.exitDoor?.visible && state.exitDoorParticles) {
-            const positions = state.exitDoorParticles.geometry.attributes.position.array;
+        const partGeo = state.exitDoorParticles?.geometry?.attributes?.position;
+        if (state.exitDoor?.visible && partGeo && state.exitPosition && state.exitDoorParticleVelocities) {
+            const positions = partGeo.array;
             const velocities = state.exitDoorParticleVelocities;
+            const ex = state.exitPosition.x;
+            const ez = state.exitPosition.z;
             for (let i = 0; i < positions.length; i += 3) {
                 positions[i] += velocities[i] * delta;
                 positions[i + 1] += velocities[i + 1] * delta;
                 positions[i + 2] += velocities[i + 2] * delta;
-                const dx = positions[i] - state.exitPosition.x;
-                const dz = positions[i + 2] - state.exitPosition.z;
+                const dx = positions[i] - ex;
+                const dz = positions[i + 2] - ez;
                 const dist = Math.hypot(dx, dz);
                 if (dist > 4 || positions[i + 1] > 4) {
-                    positions[i] = state.exitPosition.x + (Math.random() - 0.5) * 3;
+                    positions[i] = ex + (Math.random() - 0.5) * 3;
                     positions[i + 1] = 1.5 + Math.random() * 2;
-                    positions[i + 2] = state.exitPosition.z + (Math.random() - 0.5) * 3;
+                    positions[i + 2] = ez + (Math.random() - 0.5) * 3;
                     velocities[i] = (Math.random() - 0.5) * 0.5;
                     velocities[i + 1] = Math.random() * 0.3 + 0.1;
                     velocities[i + 2] = (Math.random() - 0.5) * 0.5;
                 }
             }
-            state.exitDoorParticles.geometry.attributes.position.needsUpdate = true;
+            partGeo.needsUpdate = true;
         }
 
         state.prevTime = time;
@@ -810,7 +841,6 @@ function animate() {
     } catch (e) {
         console.warn('Render skipped:', e);
     }
-    if (state._frameCount === undefined) state._frameCount = 0;
     if (state._frameCount == null) state._frameCount = 0;
     state._frameCount++;
     if (state._frameCount % 4 === 0) updateMinimap();
