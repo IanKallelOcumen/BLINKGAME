@@ -46,45 +46,10 @@ export function loadGameAssets(hideLoading) {
     let pending = 2;
     const onLoaded = () => {
         pending--;
-        if (pending <= 0) hideLoading();
+        if (pending <= 0 && typeof hideLoading === 'function') hideLoading();
     };
 
-    if (ASSETS.artifact) {
-        loader.load(
-            ASSETS.artifact,
-            (gltf) => {
-                const template = gltf.scene;
-                scaleToSize(template, ARTIFACT_TARGET_SIZE);
-                applyPurpleGemMaterial(template);
-                const glowLight = new THREE.PointLight(0xaa66ff, 2, 6, 1.5);
-                glowLight.position.set(0, 0, 0);
-                template.add(glowLight);
-                artifactPositions.forEach((pos) => {
-                    const mesh = template.clone(true);
-                    setupArtifact(mesh, pos);
-                });
-                onLoaded();
-            },
-            undefined,
-            () => {
-                const artifactGeo = new THREE.SphereGeometry(0.4, 16, 16);
-                const artifactMat = new THREE.MeshStandardMaterial({
-                    color: 0x8844cc,
-                    emissive: 0x4400aa,
-                    emissiveIntensity: 0.5,
-                    roughness: 0.25,
-                    metalness: 0.6,
-                });
-                artifactPositions.forEach((pos) => {
-                    const mesh = new THREE.Mesh(artifactGeo, artifactMat);
-                    const glowLight = new THREE.PointLight(0xaa66ff, 2, 6, 1.5);
-                    mesh.add(glowLight);
-                    setupArtifact(mesh, pos);
-                });
-                onLoaded();
-            }
-        );
-    } else {
+    const makeFallbackArtifacts = () => {
         const artifactGeo = new THREE.SphereGeometry(0.4, 16, 16);
         const artifactMat = new THREE.MeshStandardMaterial({
             color: 0x8844cc,
@@ -99,35 +64,84 @@ export function loadGameAssets(hideLoading) {
             mesh.add(glowLight);
             setupArtifact(mesh, pos);
         });
+    };
+
+    if (ASSETS.artifact) {
+        loader.load(
+            ASSETS.artifact,
+            (gltf) => {
+                const template = gltf?.scene;
+                if (!template) {
+                    makeFallbackArtifacts();
+                    onLoaded();
+                    return;
+                }
+                scaleToSize(template, ARTIFACT_TARGET_SIZE);
+                applyPurpleGemMaterial(template);
+                const glowLight = new THREE.PointLight(0xaa66ff, 2, 6, 1.5);
+                glowLight.position.set(0, 0, 0);
+                template.add(glowLight);
+                artifactPositions.forEach((pos) => {
+                    const mesh = template.clone(true);
+                    setupArtifact(mesh, pos);
+                });
+                onLoaded();
+            },
+            undefined,
+            () => {
+                makeFallbackArtifacts();
+                onLoaded();
+            }
+        );
+    } else {
+        makeFallbackArtifacts();
         pending--;
     }
 
-    loader.load(
-        ASSETS.enemy,
-        (gltf) => {
-            state.pendingEnemyModel = gltf.scene;
-            applyEnemyTexture(state.pendingEnemyModel);
-            prepareEnemy(state.pendingEnemyModel);
-            onLoaded();
-        },
-        undefined,
-        (err) => {
-            console.error('Failed to load enemy:', err);
-            const geo = new THREE.CylinderGeometry(0.5, 0.5, 2, 16);
-            const mat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.1 });
-            const mesh = new THREE.Mesh(geo, mat);
-            state.pendingEnemyModel = mesh;
-            prepareEnemy(mesh);
-            onLoaded();
-        }
-    );
+    const createFallbackEnemy = () => {
+        const geo = new THREE.CylinderGeometry(0.5, 0.5, 2, 16);
+        const mat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.1 });
+        const mesh = new THREE.Mesh(geo, mat);
+        state.pendingEnemyModel = mesh;
+        prepareEnemy(mesh);
+        onLoaded();
+    };
+
+    if (!ASSETS.enemy) {
+        console.warn('ASSETS.enemy not set; using fallback enemy.');
+        createFallbackEnemy();
+    } else {
+        loader.load(
+            ASSETS.enemy,
+            (gltf) => {
+                const scene = gltf?.scene;
+                if (!scene) {
+                    console.warn('Enemy GLTF had no scene; using fallback.');
+                    createFallbackEnemy();
+                    return;
+                }
+                state.pendingEnemyModel = scene;
+                applyEnemyTexture(scene);
+                prepareEnemy(scene);
+                onLoaded();
+            },
+            undefined,
+            (err) => {
+                console.error('Failed to load enemy:', err);
+                createFallbackEnemy();
+            }
+        );
+    }
 }
 
 function applyEnemyTexture(model) {
+    if (!model) return;
     const texLoader = new THREE.TextureLoader();
+    if (!ASSETS.enemyTexture) return;
     texLoader.load(
         ASSETS.enemyTexture,
         (tex) => {
+            if (!model) return;
             tex.flipY = false;
             if (tex.colorSpace !== undefined) tex.colorSpace = THREE.SRGBColorSpace;
             else if (tex.encoding !== undefined) tex.encoding = THREE.sRGBEncoding;
@@ -150,7 +164,7 @@ function applyEnemyTexture(model) {
         },
         undefined,
         () => {
-            model.traverse((child) => {
+            if (model) model.traverse((child) => {
                 if (child.isMesh && child.material) {
                     child.material.color.setHex(0xffffff);
                     child.material.emissive.setHex(0x222222);
@@ -161,6 +175,7 @@ function applyEnemyTexture(model) {
 }
 
 function prepareEnemy(model) {
+    if (!model) return;
     model.traverse((child) => {
         if (child.isMesh) {
             child.castShadow = true;

@@ -5,37 +5,51 @@ import { ASSETS, SETTINGS } from './config.js';
 import { state } from './state.js';
 
 export function initAudio() {
-    state.walkAudio = new Audio(ASSETS.walkSound);
-    state.walkAudio.loop = true;
-    state.walkAudio.volume = SETTINGS.walkVolume;
+    state.walkAudio = ASSETS.walkSound ? new Audio(ASSETS.walkSound) : null;
+    if (state.walkAudio) {
+        state.walkAudio.loop = true;
+        state.walkAudio.volume = (SETTINGS.walkVolume ?? 0.35);
+    }
 
-    state.breathingAudio = new Audio(ASSETS.breathingSound);
-    state.breathingAudio.loop = true;
-    state.breathingAudio.volume = 0;
+    state.breathingAudio = ASSETS.breathingSound ? new Audio(ASSETS.breathingSound) : null;
+    if (state.breathingAudio) {
+        state.breathingAudio.loop = true;
+        state.breathingAudio.volume = 0;
+    }
 
-    state.jumpscareAudio = new Audio(ASSETS.jumpscareSound);
-    state.jumpscareAudio.volume = 1;
+    state.jumpscareAudio = ASSETS.jumpscareSound ? new Audio(ASSETS.jumpscareSound) : null;
+    if (state.jumpscareAudio) state.jumpscareAudio.volume = 1;
 
-    state.neckSnapAudio = new Audio(ASSETS.neckSnapSound || './neck-snap.mp3');
-    state.neckSnapAudio.volume = 1;
+    state.neckSnapAudio = (ASSETS.neckSnapSound || './neck-snap.mp3') ? new Audio(ASSETS.neckSnapSound || './neck-snap.mp3') : null;
+    if (state.neckSnapAudio) state.neckSnapAudio.volume = 1;
 
-    state.roomToneAudio = new Audio(ASSETS.roomToneSound || './room-tone.mp3');
-    state.roomToneAudio.loop = true;
-    state.roomToneAudio.volume = SETTINGS.roomToneVolume ?? 0.5;
+    const roomToneSrc = ASSETS.roomToneSound || './room-tone.mp3';
+    state.roomToneAudio = roomToneSrc ? new Audio(roomToneSrc) : null;
+    if (state.roomToneAudio) {
+        state.roomToneAudio.loop = true;
+        state.roomToneAudio.volume = SETTINGS.roomToneVolume ?? 0.5;
+    }
 
-    state.heartbeatAudio = new Audio(ASSETS.heartbeatSound || './heartbeat.mp3');
-    state.heartbeatAudio.loop = true;
-    state.heartbeatAudio.volume = 0;
+    const heartbeatSrc = ASSETS.heartbeatSound || './heartbeat.mp3';
+    state.heartbeatAudio = heartbeatSrc ? new Audio(heartbeatSrc) : null;
+    if (state.heartbeatAudio) {
+        state.heartbeatAudio.loop = true;
+        state.heartbeatAudio.volume = 0;
+    }
 
-    state.stareAudio = new Audio(ASSETS.stareSound || './stare-sound.mp3');
-    state.stareAudio.volume = 0.9;
-    state.stareAudio.addEventListener('loadedmetadata', () => {
-        const d = state.stareAudio.duration;
-        if (!isNaN(d) && d > 0) {
-            state.stareSoundDuration = d;
-            state.stareEffectStart = Math.max(0.3, d * 0.15);
-        }
-    });
+    const stareSrc = ASSETS.stareSound || './stare-sound.mp3';
+    state.stareAudio = stareSrc ? new Audio(stareSrc) : null;
+    if (state.stareAudio) {
+        state.stareAudio.volume = 0.9;
+        state.stareAudio.addEventListener('loadedmetadata', () => {
+            if (!state.stareAudio) return;
+            const d = state.stareAudio.duration;
+            if (!isNaN(d) && d > 0) {
+                state.stareSoundDuration = d;
+                state.stareEffectStart = Math.max(0.3, d * 0.15);
+            }
+        });
+    }
 }
 
 export function startRoomTone() {
@@ -66,17 +80,18 @@ export function unlockAudio() {
 
 export function updateSounds(isObservingEnemy, distToEnemy) {
     if (!state.audioUnlocked || state.isGameOver) return;
+    const masterVol = state.masterVolume ?? 1;
 
     // Keep room tone tied to master volume when playing
     if (state.roomToneAudio && !state.roomToneAudio.paused) {
-        state.roomToneAudio.volume = (SETTINGS.roomToneVolume ?? 0.5) * state.masterVolume;
+        state.roomToneAudio.volume = (SETTINGS.roomToneVolume ?? 0.5) * masterVol;
     }
 
     const isMoving = state.moveForward || state.moveBackward || state.moveLeft || state.moveRight;
 
     if (state.walkAudio) {
         if (isMoving && state.controls?.isLocked) {
-            state.walkAudio.volume = SETTINGS.walkVolume * state.masterVolume;
+            state.walkAudio.volume = (SETTINGS.walkVolume ?? 0.35) * masterVol;
             if (state.walkAudio.paused) state.walkAudio.play().catch(() => {});
         } else {
             state.walkAudio.pause();
@@ -102,7 +117,7 @@ export function updateSounds(isObservingEnemy, distToEnemy) {
     }
     if (state.heartbeatAudio) {
         if (playHeartbeat) {
-            state.heartbeatAudio.volume = heartbeatVol * state.masterVolume;
+            state.heartbeatAudio.volume = heartbeatVol * masterVol;
             const closeThreshold = SETTINGS.heartbeatCloseThreshold ?? 1.8;
             const rateClose = SETTINGS.heartbeatPlaybackRateClose ?? 2.0;
             state.heartbeatAudio.playbackRate = (state.enemyModel && distToEnemy !== undefined && distToEnemy < closeThreshold) ? rateClose : 1.0;
@@ -111,18 +126,20 @@ export function updateSounds(isObservingEnemy, distToEnemy) {
             state.heartbeatAudio.pause();
         }
     }
-    if (!playBreathing && state.staminaLevel <= SETTINGS.staminaBreathingThreshold) {
-        const recoveryFade = Math.min(1, state.stillTime / 2);
+    const staminaLevel = state.staminaLevel ?? 100;
+    if (!playBreathing && staminaLevel <= (SETTINGS.staminaBreathingThreshold ?? 25)) {
+        const recoveryFade = Math.min(1, (state.stillTime ?? 0) / 2);
         if (recoveryFade < 1) {
             playBreathing = true;
-            const lowVol = 0.35 + (1 - state.staminaLevel / SETTINGS.staminaBreathingThreshold) * 0.45;
+            const threshold = SETTINGS.staminaBreathingThreshold ?? 25;
+            const lowVol = 0.35 + (1 - staminaLevel / threshold) * 0.45;
             breathingVol = lowVol * (1 - recoveryFade * 0.7);
         }
     }
 
     if (state.breathingAudio) {
         if (playBreathing) {
-            state.breathingAudio.volume = breathingVol * state.masterVolume;
+            state.breathingAudio.volume = breathingVol * masterVol;
             if (state.breathingAudio.paused) state.breathingAudio.play().catch(() => {});
         } else {
             state.breathingAudio.pause();
@@ -141,7 +158,7 @@ export function stopAllSounds() {
 export function playStareSound() {
     if (!state.audioUnlocked) return;
     if (state.stareAudio && state.stareAudio.paused) {
-        state.stareAudio.volume = 0.9 * state.masterVolume;
+        state.stareAudio.volume = 0.9 * (state.masterVolume ?? 1);
         state.stareAudio.currentTime = 0;
         state.stareAudio.play().catch(() => {});
     }
@@ -153,14 +170,14 @@ export function stopStareSound() {
 
 export function playJumpscare() {
     if (state.jumpscareAudio) {
-        state.jumpscareAudio.volume = 1.0 * state.masterVolume;
+        state.jumpscareAudio.volume = 1.0 * (state.masterVolume ?? 1);
         state.jumpscareAudio.play().catch(() => {});
     }
 }
 
 export function playNeckSnap() {
     if (state.neckSnapAudio) {
-        state.neckSnapAudio.volume = 1.0 * state.masterVolume;
+        state.neckSnapAudio.volume = 1.0 * (state.masterVolume ?? 1);
         state.neckSnapAudio.currentTime = 0;
         state.neckSnapAudio.play().catch(() => {});
     }
