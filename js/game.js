@@ -62,12 +62,14 @@ function performBlink(refill) {
     }, SETTINGS.blinkDuration);
 }
 
+const WALL_HALF_SIZE = 2;
+
 function collidesWithWalls(pos) {
-    const wallCollisionHalf = 1.8;
+    const threshold = WALL_HALF_SIZE + PLAYER_RADIUS;
     for (const w of state.walls) {
         const dx = pos.x - w.position.x;
         const dz = pos.z - w.position.z;
-        if (Math.abs(dx) < wallCollisionHalf && Math.abs(dz) < wallCollisionHalf) {
+        if (Math.abs(dx) < threshold && Math.abs(dz) < threshold) {
             return true;
         }
     }
@@ -83,6 +85,7 @@ function collidesWithEnemy(pos) {
 let _artifactFrame = 0;
 
 function checkArtifacts() {
+    if (!state.camera) return;
     const t = performance.now() * 0.001;
     _artifactFrame++;
     for (const art of state.artifacts) {
@@ -150,6 +153,8 @@ function checkArtifacts() {
             !state.exitDoor.visible
         ) {
             state.exitDoor.visible = true;
+            if (state.exitDoorGlow) state.exitDoorGlow.intensity = 3;
+            if (state.exitDoorParticles) state.exitDoorParticles.visible = true;
             playExitUnlocked();
             const txt = dom('center-text');
             if (txt && !state.isGameOver) {
@@ -165,7 +170,7 @@ function checkArtifacts() {
 }
 
 function checkExitDoor() {
-    if (!state.exitDoor || !state.exitDoor.visible || state.isGameOver) return;
+    if (!state.exitDoor || !state.exitDoor.visible || state.isGameOver || !state.camera) return;
     const dist = state.camera.position.distanceTo(state.exitDoor.position);
     if (dist < EXIT_RADIUS) gameWin();
 }
@@ -183,6 +188,8 @@ function respawnPlayer() {
     state.flashlightOn = true;
     state.flashlightDim = 0;
     state.jumpscarePhase = 'none';
+    state.lookingAtMonsterTime = 0;
+    state.enemyInCatchRangeTime = 0;
     if (state.enemyModel) {
         state.enemyModel.position.set(
             respawnPos.x + 20,
@@ -478,7 +485,7 @@ function init() {
 const MAX_DELTA = 0.1;
 
 function updateFlashlightAndTimer() {
-    if (!state.gameStartTime || state.isGameOver) return;
+    if (!state.gameStartTime || state.isGameOver || !state.camera) return;
 
     const elapsed = (performance.now() - state.gameStartTime) / 1000;
     const remaining = Math.max(0, state.gameTimeLimit - elapsed);
@@ -487,7 +494,7 @@ function updateFlashlightAndTimer() {
     const timerEl = dom('game-timer');
     if (timerEl) {
         timerEl.innerText = `Time: ${mins}:${secs < 10 ? '0' : ''}${secs}`;
-        if (remaining < 60) timerEl.classList.add('low-time');
+        timerEl.classList.toggle('low-time', remaining > 0 && remaining < 60);
     }
 
     if (remaining <= 0 && state.artifacts.length > 0) {
@@ -793,6 +800,7 @@ function animate() {
         console.warn('Render skipped:', e);
     }
     if (state._frameCount === undefined) state._frameCount = 0;
+    if (state._frameCount == null) state._frameCount = 0;
     state._frameCount++;
     if (state._frameCount % 4 === 0) updateMinimap();
 }

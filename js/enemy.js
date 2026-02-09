@@ -321,7 +321,7 @@ function tryFindValidStep(fromPos, preferredDir, maxStep) {
 const STUCK_PATH_THROTTLE = 1.5;
 
 export function moveEnemyStep(maxStep, deltaTime) {
-    if (!state.enemyModel || maxStep <= 0) return false;
+    if (!state.enemyModel || !state.camera || maxStep <= 0) return false;
 
     const pPos = state.camera.position;
     const ePos = state.enemyModel.position;
@@ -488,7 +488,7 @@ function getBlockingObjects() {
 const OBSERVED_RAYCAST_SKIP_DIST = 2.5;
 
 export function enemyIsObserved() {
-    if (!state.enemyModel) return false;
+    if (!state.enemyModel || !state.camera) return false;
 
     const camPos = state.camera.position;
     const enemyPos = state.enemyModel.position;

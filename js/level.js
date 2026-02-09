@@ -180,8 +180,8 @@ export function generateLevel() {
     state.exitDoor.visible = false;
     state.scene.add(state.exitDoor);
 
-    // Add glow light to exit door
-    const doorGlow = new THREE.PointLight(0x00ff88, 3, 15);
+    // Add glow light to exit door (hidden until exit opens)
+    const doorGlow = new THREE.PointLight(0x00ff88, 0, 15);
     doorGlow.position.set(exitPos.x, 2, exitPos.z);
     state.scene.add(doorGlow);
     state.exitDoorGlow = doorGlow;
@@ -203,6 +203,7 @@ export function generateLevel() {
     particleGeo.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
     const particleMat = new THREE.PointsMaterial({ color: 0x00ff88, size: 0.2, sizeAttenuation: true });
     const particles = new THREE.Points(particleGeo, particleMat);
+    particles.visible = false;
     state.scene.add(particles);
     state.exitDoorParticles = particles;
     state.exitDoorParticleVelocities = velocities;
