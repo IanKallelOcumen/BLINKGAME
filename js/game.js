@@ -41,9 +41,6 @@ function startGame() {
 }
 
 function hideLoading() {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/df00b495-a20e-4eae-9d8e-a4e922ffc4ab',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'game.js:hideLoading',message:'hideLoading called',data:{},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
     dom('loading-overlay')?.classList.add('hidden');
 }
 
@@ -66,7 +63,8 @@ function performBlink(refill) {
 }
 
 const WALL_HALF_SIZE = 2;
-const WALL_THRESHOLD = WALL_HALF_SIZE + PLAYER_RADIUS + 0.08; // extra margin to prevent tunnel-through
+const WALL_THRESHOLD = WALL_HALF_SIZE + PLAYER_RADIUS + 0.12; // margin to prevent tunnel-through
+const MAX_STEP = 0.3; // sub-step size; prevents tunneling at any speed
 
 function pointInsideWallBox(px, pz, wx, wz) {
     return Math.abs(px - wx) <= WALL_THRESHOLD && Math.abs(pz - wz) <= WALL_THRESHOLD;
@@ -559,15 +557,8 @@ function updateFlashlightAndTimer() {
 }
 
 
-let _volumeDisplayLoggedOnce = false;
 function updateVolumeDisplay() {
     const masterVol = state.masterVolume ?? 1;
-    // #region agent log
-    if (!_volumeDisplayLoggedOnce) {
-        _volumeDisplayLoggedOnce = true;
-        fetch('http://127.0.0.1:7242/ingest/df00b495-a20e-4eae-9d8e-a4e922ffc4ab',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'game.js:updateVolumeDisplay',message:'volume display first run',data:{masterVol,isNumber:typeof masterVol==='number'},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-    }
-    // #endregion
     const fill = dom('volume-fill');
     if (fill) {
         fill.style.width = (masterVol * 100) + '%';
@@ -611,7 +602,7 @@ function animate() {
         state.velocity.z -= state.velocity.z * 10.0 * delta;
         state.direction.z = Number(state.moveForward) - Number(state.moveBackward);
         state.direction.x = Number(state.moveRight) - Number(state.moveLeft);
-        state.direction.normalize();
+        if (state.direction.x !== 0 || state.direction.z !== 0) state.direction.normalize();
 
         const isMoving = state.moveForward || state.moveBackward || state.moveLeft || state.moveRight;
         if (isMoving) {
@@ -642,17 +633,39 @@ function animate() {
         }
 
         const oldPos = state.camera.position.clone();
+        const moveX = -state.velocity.x * delta;
+        const moveZ = -state.velocity.z * delta;
+        const totalDist = Math.hypot(moveX, moveZ);
 
-        state.controls.moveRight(-state.velocity.x * delta);
-        state.controls.moveForward(-state.velocity.z * delta);
+        let hitWall = false;
+        let hitEnemy = false;
+        let lastValid = oldPos.clone();
 
-        const hitWall = segmentCollidesWithWalls(oldPos, state.camera.position);
-        const hitEnemy = collidesWithEnemy(state.camera.position);
+        if (totalDist > 1e-6) {
+            const steps = Math.max(1, Math.ceil(totalDist / MAX_STEP));
+            const stepX = moveX / steps;
+            const stepZ = moveZ / steps;
+            for (let i = 0; i < steps; i++) {
+                state.controls.moveRight(stepX);
+                state.controls.moveForward(stepZ);
+                const cur = state.camera.position;
+                if (segmentCollidesWithWalls(lastValid, cur)) {
+                    hitWall = true;
+                    state.camera.position.copy(lastValid);
+                    break;
+                }
+                if (collidesWithEnemy(cur)) {
+                    hitEnemy = true;
+                    state.camera.position.copy(lastValid);
+                    break;
+                }
+                lastValid.copy(cur);
+            }
+        }
 
         const observed = state.isBlinking ? false : enemyIsObserved();
 
         if (hitWall || hitEnemy) {
-            state.camera.position.copy(oldPos);
             state.velocity.set(0, 0, 0);
             if (hitEnemy) {
                 triggerCaught();

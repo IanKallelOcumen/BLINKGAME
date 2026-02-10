@@ -42,18 +42,10 @@ export function loadGameAssets(hideLoading) {
         const idx = Math.floor(Math.random() * passages.length);
         artifactPositions.push(passages.splice(idx, 1)[0]);
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/df00b495-a20e-4eae-9d8e-a4e922ffc4ab',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'enemy.js:loadGameAssets',message:'load started',data:{artifactCount:artifactPositions.length,passagesLen:passages.length},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-    // #endregion
 
     let pending = 2;
     const onLoaded = () => {
         pending--;
-        // #region agent log
-        if (pending <= 0) {
-            fetch('http://127.0.0.1:7242/ingest/df00b495-a20e-4eae-9d8e-a4e922ffc4ab',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'enemy.js:onLoaded',message:'assets done, hideLoading',data:{pending,hasHideLoading:typeof hideLoading==='function'},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-        }
-        // #endregion
         if (pending <= 0 && typeof hideLoading === 'function') hideLoading();
     };
 
