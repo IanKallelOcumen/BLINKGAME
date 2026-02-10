@@ -675,18 +675,10 @@ function animate() {
         const oldX = state.camera.position.x;
         const oldZ = state.camera.position.z;
 
-        // Axis-separated collision: try X, then Z (gives wall sliding)
-        let hitWall = false;
-        state.camera.position.x += worldDx;
-        if (collidesAt(state.camera.position.x, state.camera.position.z)) {
-            state.camera.position.x = oldX;
-            hitWall = true;
-        }
-        state.camera.position.z += worldDz;
-        if (collidesAt(state.camera.position.x, state.camera.position.z)) {
-            state.camera.position.z = oldZ;
-            hitWall = true;
-        }
+        // Axis-separated collision with wall sliding
+        const result = moveWithCollision(oldX, oldZ, worldDx, worldDz);
+        state.camera.position.x = result.x;
+        state.camera.position.z = result.z;
 
         const hitEnemy = collidesWithEnemy(state.camera.position);
         if (hitEnemy) {
@@ -699,7 +691,8 @@ function animate() {
         if (hitEnemy) {
             state.velocity.set(0, 0, 0);
             triggerCaught();
-        } else if (hitWall && !observed && state.enemyModel) {
+        } else if (result.hitWall && !observed && state.enemyModel) {
+            state.velocity.set(0, 0, 0);
             let enemySpeed = SETTINGS.enemySpeed + state.artifactsCollected * SETTINGS.enemySpeedPerArtifact;
             if (state.enemyBurstTime > 0) enemySpeed *= SETTINGS.enemyBurstMultiplier;
             const caught = moveEnemyStep(enemySpeed * delta, delta);
