@@ -30,35 +30,22 @@ export function updateMinimap() {
 
     const px = state.camera.position.x;
     const pz = state.camera.position.z;
-    // Use controls.getDirection() like the game movement does for consistency
     const forward = new THREE.Vector3();
-    if (state.controls) {
-        state.controls.getDirection(forward);
-    } else {
-        state.camera.getWorldDirection(forward);
-    }
-    // Calculate angle to rotate world so forward points up on screen
-    // Forward direction in world: (forward.x, forward.z)
-    // We want it to point to (0, -1) on screen (up)
-    const yaw = Math.atan2(forward.x, forward.z);
-    const cos = Math.cos(-yaw); // Negate to rotate world coordinates back
-    const sin = Math.sin(-yaw);
+    state.camera.getWorldDirection(forward);
+    // Yaw so that (forward.x, forward.z) maps to (0, 1) in map space -> up on screen
+    const yaw = Math.atan2(-forward.x, forward.z);
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
 
     const worldToMap = (wx, wz) => {
         const dx = wx - px;
         const dz = wz - pz;
-        // Rotate coordinates so forward points up
-        const rx = dx * cos - dz * sin;
-        const rz = dx * sin + dz * cos;
+        const rx = dx * cos + dz * sin;
+        const rz = -dx * sin + dz * cos;
         const mx = cx + rx * scale;
-        const my = cy - rz * scale; // Negative because screen Y is down
+        const my = cy - rz * scale;
         return { mx, my };
     };
-    
-    // Calculate forward direction in rotated map space (should be (0, -1) = up after rotation)
-    // After rotation, forward should always point up (0, -1), so we can use that directly
-    const forwardMapX = 0; // After rotation, forward is always (0, -1)
-    const forwardMapZ = -1;
 
     const inBounds = (mx, my) => mx >= -10 && mx <= w + 10 && my >= -10 && my <= h + 10;
 
@@ -72,46 +59,12 @@ export function updateMinimap() {
 
     const p = { mx: cx, my: cy };
 
-    // Draw flashlight cone SPREADING OUTWARD from player
-    // After rotation, forward always points up (0, -1), so cone always points up
-    const coneLength = 18;
-    const coneBaseWidth = 6; // Narrow base at player (where light starts)
-    const coneTipWidth = 16; // Wide tip spreading outward
-    
-    // Forward direction in rotated map space is always (0, -1) = straight up
-    // Perpendicular (right) is always (1, 0) = straight right
-    const forwardNormX = 0;
-    const forwardNormZ = -1; // Up on screen
-    const perpX = 1; // Right
-    const perpZ = 0;
-    
-    // Base points (narrow, at player center) - spread left/right
-    const baseLeftX = cx - perpX * (coneBaseWidth / 2);
-    const baseLeftY = cy;
-    const baseRightX = cx + perpX * (coneBaseWidth / 2);
-    const baseRightY = cy;
-    
-    // Tip center point (forward direction = up)
-    const tipCenterX = cx;
-    const tipCenterY = cy - coneLength; // Up is smaller Y
-    
-    // Tip points (wide, spreading left/right)
-    const tipLeftX = tipCenterX - perpX * (coneTipWidth / 2);
-    const tipLeftY = tipCenterY;
-    const tipRightX = tipCenterX + perpX * (coneTipWidth / 2);
-    const tipRightY = tipCenterY;
-    
-    // Draw as a spreading flashlight beam (narrow to wide, rotating with camera)
-    ctx.fillStyle = 'rgba(255, 255, 200, 0.7)';
-    ctx.strokeStyle = 'rgba(255, 255, 200, 0.9)';
-    ctx.lineWidth = 2.5;
+    const arrowLength = 12;
+    ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(baseLeftX, baseLeftY); // Left side of narrow base
-    ctx.lineTo(baseRightX, baseRightY); // Right side of narrow base
-    ctx.lineTo(tipRightX, tipRightY); // Right side of wide tip
-    ctx.lineTo(tipLeftX, tipLeftY); // Left side of wide tip
-    ctx.closePath();
-    ctx.fill();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx, cy - arrowLength);
     ctx.stroke();
 
     ctx.fillStyle = '#ffffff';
