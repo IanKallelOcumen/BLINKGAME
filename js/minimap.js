@@ -32,20 +32,21 @@ export function updateMinimap() {
     const pz = state.camera.position.z;
     const forward = new THREE.Vector3();
     state.camera.getWorldDirection(forward);
-    // Yaw so that (forward.x, forward.z) maps to (0, 1) in map space -> up on screen
+    // Calculate angle to rotate world so forward points up on screen
+    // Forward direction in world: (forward.x, forward.z)
+    // We want it to point to (0, -1) on screen (up)
     const yaw = Math.atan2(forward.x, forward.z);
-    const cos = Math.cos(yaw);
-    const sin = Math.sin(yaw);
+    const cos = Math.cos(-yaw); // Negate to rotate world coordinates back
+    const sin = Math.sin(-yaw);
 
     const worldToMap = (wx, wz) => {
         const dx = wx - px;
         const dz = wz - pz;
-        // Rotate so forward direction points up on screen
-        // Flip X to fix left/right inversion
-        const rx = -(dx * cos + dz * sin);
-        const rz = -dx * sin + dz * cos;
+        // Rotate coordinates so forward points up
+        const rx = dx * cos - dz * sin;
+        const rz = dx * sin + dz * cos;
         const mx = cx + rx * scale;
-        const my = cy - rz * scale;
+        const my = cy - rz * scale; // Negative because screen Y is down
         return { mx, my };
     };
 
@@ -61,21 +62,16 @@ export function updateMinimap() {
 
     const p = { mx: cx, my: cy };
 
-    // Draw flashlight cone pointing in forward direction (rotated based on camera yaw)
+    // Draw flashlight cone pointing in forward direction (always points up after rotation)
     const coneLength = 8;
     const coneWidth = 4;
-    // Calculate cone direction based on camera forward direction in map space
-    const forwardMapX = -(forward.x * cos + forward.z * sin);
-    const forwardMapZ = -forward.x * sin + forward.z * cos;
-    const coneAngle = Math.atan2(forwardMapX, forwardMapZ);
-    const tipX = cx + Math.sin(coneAngle) * coneLength;
-    const tipY = cy - Math.cos(coneAngle) * coneLength;
-    const perpX = Math.cos(coneAngle);
-    const perpY = Math.sin(coneAngle);
-    const baseLeftX = cx - perpX * coneWidth / 2;
-    const baseLeftY = cy + perpY * coneWidth / 2;
-    const baseRightX = cx + perpX * coneWidth / 2;
-    const baseRightY = cy - perpY * coneWidth / 2;
+    // Forward direction in rotated map space is always (0, -1) = up
+    const tipX = cx;
+    const tipY = cy - coneLength;
+    const baseLeftX = cx - coneWidth / 2;
+    const baseLeftY = cy;
+    const baseRightX = cx + coneWidth / 2;
+    const baseRightY = cy;
     
     ctx.fillStyle = 'rgba(255, 255, 200, 0.4)';
     ctx.strokeStyle = 'rgba(255, 255, 200, 0.6)';
