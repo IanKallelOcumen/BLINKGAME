@@ -446,10 +446,11 @@ function init() {
         if (state.hasStarted && !state.isGameOver && !state.controls?.isLocked && state.jumpscarePhase === 'none') {
             // Add small delay to prevent camera snapping when pointer lock is regained
             relockTimeout = setTimeout(() => {
-                if (state.hasStarted && !state.isGameOver && !state.controls?.isLocked && state.jumpscarePhase === 'none') {
+                if (state.hasStarted && !state.isGameOver && !state.controls?.isLocked && state.jumpscarePhase === 'none' && document.pointerLockElement === null) {
                     state.controls?.lock();
                 }
-            }, 100);
+                relockTimeout = null;
+            }, 150);
         }
     });
 
