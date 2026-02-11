@@ -34,8 +34,9 @@ export function updateMinimap() {
     state.camera.getWorldDirection(forward);
     // Calculate angle to rotate world so forward points up on screen
     // Forward direction in world: (forward.x, forward.z)
+    // getWorldDirection returns the direction the camera is looking (negative Z in Three.js)
     // We want it to point to (0, -1) on screen (up)
-    const yaw = Math.atan2(forward.x, forward.z);
+    const yaw = Math.atan2(-forward.x, -forward.z); // Negate because getWorldDirection points opposite
     const cos = Math.cos(-yaw); // Negate to rotate world coordinates back
     const sin = Math.sin(-yaw);
 
