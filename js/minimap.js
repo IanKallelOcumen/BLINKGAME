@@ -33,16 +33,17 @@ export function updateMinimap() {
     const forward = new THREE.Vector3();
     state.camera.getWorldDirection(forward);
     // Yaw so that (forward.x, forward.z) maps to (0, 1) in map space -> up on screen
-    const yaw = Math.atan2(forward.x, forward.z);
+    // Fix: use negative x to correct left/right inversion
+    const yaw = Math.atan2(-forward.x, forward.z);
     const cos = Math.cos(yaw);
     const sin = Math.sin(yaw);
 
     const worldToMap = (wx, wz) => {
         const dx = wx - px;
         const dz = wz - pz;
-        // Rotate so forward direction points up on screen
-        const rx = dx * cos + dz * sin;
-        const rz = -dx * sin + dz * cos;
+        // Rotate so forward direction points up on screen, correct left/right
+        const rx = dx * cos - dz * sin;
+        const rz = dx * sin + dz * cos;
         const mx = cx + rx * scale;
         const my = cy - rz * scale;
         return { mx, my };
@@ -59,14 +60,6 @@ export function updateMinimap() {
     });
 
     const p = { mx: cx, my: cy };
-
-    const arrowLength = 12;
-    ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx, cy - arrowLength);
-    ctx.stroke();
 
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
