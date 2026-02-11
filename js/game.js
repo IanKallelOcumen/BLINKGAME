@@ -63,7 +63,7 @@ function performBlink(refill) {
 }
 
 const WALL_HALF_SIZE = 2;
-const WALL_THRESHOLD = WALL_HALF_SIZE + PLAYER_RADIUS + 0.05;
+const WALL_THRESHOLD = WALL_HALF_SIZE + PLAYER_RADIUS - 0.1; // Reduced threshold to allow closer approach to walls
 
 /**
  * Separate-axis collision with wall sliding.
