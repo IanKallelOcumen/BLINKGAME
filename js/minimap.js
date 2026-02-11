@@ -66,13 +66,14 @@ export function updateMinimap() {
     const coneLength = 12;
     const coneBaseWidth = 8;
     const coneTipWidth = 2;
-    // Base is at player center, tip extends forward (up on rotated map = smaller Y)
+    // Base is at player center, tip extends forward
+    // If it's appearing on back, flip direction - forward should be larger Y (cy + coneLength)
     const baseLeftX = cx - coneBaseWidth / 2;
     const baseLeftY = cy; // At player center
     const baseRightX = cx + coneBaseWidth / 2;
     const baseRightY = cy; // At player center
     const tipX = cx;
-    const tipY = cy - coneLength; // Forward direction
+    const tipY = cy + coneLength; // Forward direction (flipped)
     
     // Draw as a fan shape (arc) for flashlight beam
     ctx.fillStyle = 'rgba(255, 255, 200, 0.4)';
