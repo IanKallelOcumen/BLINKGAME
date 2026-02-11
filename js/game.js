@@ -641,8 +641,8 @@ function animate() {
         let delta = (time - state.prevTime) / 1000;
         if (delta > MAX_DELTA) delta = MAX_DELTA;
 
-        // Update controls to handle mouse movement
-        state.controls.update(delta);
+        // Update controls to handle mouse movement (PointerLockControls.update() takes no parameters)
+        state.controls.update();
 
         state.velocity.x -= state.velocity.x * 10.0 * delta;
         state.velocity.z -= state.velocity.z * 10.0 * delta;
