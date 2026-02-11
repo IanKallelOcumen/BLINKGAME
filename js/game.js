@@ -65,7 +65,7 @@ function performBlink(refill) {
 const MAX_STEP = 0.15; // smaller steps = no tunneling possible
 // Collision margin: start larger (e.g., 0.2) and decrease until collision matches visual wall edges
 // Set to 0.0 for exact match, negative to allow closer approach
-let WALL_COLLISION_MARGIN = 0.1; // Start with small margin, decrease to 0 or negative to match visual (updated: force commit)
+let WALL_COLLISION_MARGIN = 0.0; // Set to 0 for exact match with visual wall edges
 const _wallBox = new THREE.Box3(); // Reusable box for wall bounds
 const _wallMin = new THREE.Vector3();
 const _wallMax = new THREE.Vector3();
