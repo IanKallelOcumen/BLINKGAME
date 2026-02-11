@@ -61,18 +61,21 @@ export function updateMinimap() {
 
     const p = { mx: cx, my: cy };
 
-    // Draw flashlight cone pointing in forward direction
-    const forward = new THREE.Vector3();
-    state.camera.getWorldDirection(forward);
-    const yaw = Math.atan2(forward.x, forward.z);
+    // Draw flashlight cone pointing in forward direction (rotated based on camera yaw)
     const coneLength = 8;
     const coneWidth = 4;
-    const tipX = cx;
-    const tipY = cy - coneLength; // Forward is up on screen
-    const baseLeftX = tipX - coneWidth / 2;
-    const baseLeftY = tipY + coneLength;
-    const baseRightX = tipX + coneWidth / 2;
-    const baseRightY = tipY + coneLength;
+    // Calculate cone direction based on camera forward direction in map space
+    const forwardMapX = -(forward.x * cos + forward.z * sin);
+    const forwardMapZ = -forward.x * sin + forward.z * cos;
+    const coneAngle = Math.atan2(forwardMapX, forwardMapZ);
+    const tipX = cx + Math.sin(coneAngle) * coneLength;
+    const tipY = cy - Math.cos(coneAngle) * coneLength;
+    const perpX = Math.cos(coneAngle);
+    const perpY = Math.sin(coneAngle);
+    const baseLeftX = cx - perpX * coneWidth / 2;
+    const baseLeftY = cy + perpY * coneWidth / 2;
+    const baseRightX = cx + perpX * coneWidth / 2;
+    const baseRightY = cy - perpY * coneWidth / 2;
     
     ctx.fillStyle = 'rgba(255, 255, 200, 0.4)';
     ctx.strokeStyle = 'rgba(255, 255, 200, 0.6)';
