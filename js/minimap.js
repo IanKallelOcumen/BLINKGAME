@@ -50,9 +50,10 @@ export function updateMinimap() {
         return { mx, my };
     };
     
-    // Calculate forward direction in rotated map space (should be (0, -1) = up)
-    const forwardMapX = forward.x * cos - forward.z * sin;
-    const forwardMapZ = forward.x * sin + forward.z * cos;
+    // Calculate forward direction in rotated map space (should be (0, -1) = up after rotation)
+    // After rotation, forward should always point up (0, -1), so we can use that directly
+    const forwardMapX = 0; // After rotation, forward is always (0, -1)
+    const forwardMapZ = -1;
 
     const inBounds = (mx, my) => mx >= -10 && mx <= w + 10 && my >= -10 && my <= h + 10;
 
@@ -66,40 +67,34 @@ export function updateMinimap() {
 
     const p = { mx: cx, my: cy };
 
-    // Draw flashlight cone SPREADING OUTWARD from player, rotating with camera direction
+    // Draw flashlight cone SPREADING OUTWARD from player
+    // After rotation, forward always points up (0, -1), so cone always points up
     const coneLength = 18;
     const coneBaseWidth = 6; // Narrow base at player (where light starts)
     const coneTipWidth = 16; // Wide tip spreading outward
     
-    // After rotation, forward should point up (0, -1 in screen coords)
-    // So forward in map space is: forwardMapX ≈ 0, forwardMapZ ≈ -1 (normalized)
-    // Perpendicular (right) is: (1, 0) in map space
-    // But we need to account for the actual forward direction
+    // Forward direction in rotated map space is always (0, -1) = straight up
+    // Perpendicular (right) is always (1, 0) = straight right
+    const forwardNormX = 0;
+    const forwardNormZ = -1; // Up on screen
+    const perpX = 1; // Right
+    const perpZ = 0;
     
-    // Normalize forward direction in map space
-    const forwardLen = Math.hypot(forwardMapX, forwardMapZ);
-    const forwardNormX = forwardLen > 0 ? forwardMapX / forwardLen : 0;
-    const forwardNormZ = forwardLen > 0 ? forwardMapZ / forwardLen : -1; // Default to up
-    
-    // Perpendicular vector (right direction) - rotate forward 90 degrees
-    const perpX = -forwardNormZ; // Right = rotate forward 90deg clockwise
-    const perpZ = forwardNormX;
-    
-    // Base points (narrow, at player center) - spread perpendicular to forward
+    // Base points (narrow, at player center) - spread left/right
     const baseLeftX = cx - perpX * (coneBaseWidth / 2);
-    const baseLeftY = cy - perpZ * (coneBaseWidth / 2);
+    const baseLeftY = cy;
     const baseRightX = cx + perpX * (coneBaseWidth / 2);
-    const baseRightY = cy + perpZ * (coneBaseWidth / 2);
+    const baseRightY = cy;
     
-    // Tip center point (forward direction)
-    const tipCenterX = cx - forwardNormX * coneLength; // Negative because screen Y is down
-    const tipCenterY = cy - forwardNormZ * coneLength;
+    // Tip center point (forward direction = up)
+    const tipCenterX = cx;
+    const tipCenterY = cy - coneLength; // Up is smaller Y
     
-    // Tip points (wide, spreading outward) - spread perpendicular to forward
+    // Tip points (wide, spreading left/right)
     const tipLeftX = tipCenterX - perpX * (coneTipWidth / 2);
-    const tipLeftY = tipCenterY - perpZ * (coneTipWidth / 2);
+    const tipLeftY = tipCenterY;
     const tipRightX = tipCenterX + perpX * (coneTipWidth / 2);
-    const tipRightY = tipCenterY + perpZ * (coneTipWidth / 2);
+    const tipRightY = tipCenterY;
     
     // Draw as a spreading flashlight beam (narrow to wide, rotating with camera)
     ctx.fillStyle = 'rgba(255, 255, 200, 0.7)';
