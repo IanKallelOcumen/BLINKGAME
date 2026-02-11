@@ -63,9 +63,9 @@ export function updateMinimap() {
     const p = { mx: cx, my: cy };
 
     // Draw flashlight cone SPREADING OUTWARD from player, rotating with camera direction
-    const coneLength = 14;
-    const coneBaseWidth = 3; // Narrow base at player (where light starts)
-    const coneTipWidth = 12; // Wide tip spreading outward
+    const coneLength = 16;
+    const coneBaseWidth = 4; // Narrow base at player (where light starts)
+    const coneTipWidth = 14; // Wide tip spreading outward
     
     // Calculate forward direction in rotated map space
     // Forward vector in world space: (forward.x, forward.z)
@@ -74,9 +74,13 @@ export function updateMinimap() {
     const forwardMapZ = forward.x * sin + forward.z * cos;
     const forwardAngle = Math.atan2(forwardMapX, forwardMapZ);
     
-    // Calculate perpendicular vector for cone width
+    // Calculate perpendicular vector for cone width (90 degrees to forward)
     const perpX = Math.cos(forwardAngle + Math.PI / 2);
     const perpZ = Math.sin(forwardAngle + Math.PI / 2);
+    
+    // Forward direction vector
+    const forwardX = Math.sin(forwardAngle);
+    const forwardZ = -Math.cos(forwardAngle);
     
     // Base points (narrow, at player center)
     const baseLeftX = cx + perpX * (coneBaseWidth / 2);
@@ -84,18 +88,20 @@ export function updateMinimap() {
     const baseRightX = cx - perpX * (coneBaseWidth / 2);
     const baseRightY = cy - perpZ * (coneBaseWidth / 2);
     
-    // Tip points (wide, forward direction)
-    const tipCenterX = cx + Math.sin(forwardAngle) * coneLength;
-    const tipCenterY = cy - Math.cos(forwardAngle) * coneLength;
+    // Tip center point (forward direction)
+    const tipCenterX = cx + forwardX * coneLength;
+    const tipCenterY = cy + forwardZ * coneLength;
+    
+    // Tip points (wide, spreading outward)
     const tipLeftX = tipCenterX + perpX * (coneTipWidth / 2);
     const tipLeftY = tipCenterY + perpZ * (coneTipWidth / 2);
     const tipRightX = tipCenterX - perpX * (coneTipWidth / 2);
     const tipRightY = tipCenterY - perpZ * (coneTipWidth / 2);
     
     // Draw as a spreading flashlight beam (narrow to wide, rotating with camera)
-    ctx.fillStyle = 'rgba(255, 255, 200, 0.5)';
-    ctx.strokeStyle = 'rgba(255, 255, 200, 0.7)';
-    ctx.lineWidth = 1.5;
+    ctx.fillStyle = 'rgba(255, 255, 200, 0.6)';
+    ctx.strokeStyle = 'rgba(255, 255, 200, 0.8)';
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(baseLeftX, baseLeftY); // Left side of narrow base
     ctx.lineTo(baseRightX, baseRightY); // Right side of narrow base
