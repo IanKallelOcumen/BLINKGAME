@@ -33,17 +33,16 @@ export function updateMinimap() {
     const forward = new THREE.Vector3();
     state.camera.getWorldDirection(forward);
     // Yaw so that (forward.x, forward.z) maps to (0, 1) in map space -> up on screen
-    // Invert yaw calculation to fix rotation
-    const yaw = Math.atan2(forward.x, -forward.z);
+    const yaw = Math.atan2(forward.x, forward.z);
     const cos = Math.cos(yaw);
     const sin = Math.sin(yaw);
 
     const worldToMap = (wx, wz) => {
         const dx = wx - px;
         const dz = wz - pz;
-        // Invert rotation to fix map orientation
-        const rx = dx * cos - dz * sin;
-        const rz = dx * sin + dz * cos;
+        // Rotate so forward direction points up on screen
+        const rx = dx * cos + dz * sin;
+        const rz = -dx * sin + dz * cos;
         const mx = cx + rx * scale;
         const my = cy - rz * scale;
         return { mx, my };
