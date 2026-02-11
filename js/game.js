@@ -25,6 +25,12 @@ function dom(id) {
     return _dom[id];
 }
 
+// Reusable Vector3 objects for performance (avoid allocations every frame)
+const _camDir = new THREE.Vector3();
+const _camRight = new THREE.Vector3();
+const _wantDir = new THREE.Vector3();
+const _tempPos = new THREE.Vector3();
+
 function startGame() {
     if (state.hasStarted) return;
     state.hasStarted = true;
@@ -70,15 +76,26 @@ const WALL_THRESHOLD = WALL_HALF_SIZE + PLAYER_RADIUS - 0.1; // Reduced threshol
  * Tries X movement, then Z movement independently.
  * Returns {x, z} of the valid position after collision.
  */
+// Reusable object for collision result (avoid allocation)
+const _collisionResult = { x: 0, z: 0, hitWall: false };
+
 function moveWithCollision(startX, startZ, dx, dz) {
-    if (!state.walls || state.walls.length === 0) return { x: startX + dx, z: startZ + dz };
+    if (!state.walls || state.walls.length === 0) {
+        _collisionResult.x = startX + dx;
+        _collisionResult.z = startZ + dz;
+        _collisionResult.hitWall = false;
+        return _collisionResult;
+    }
+
+    const thresholdSq = WALL_THRESHOLD * WALL_THRESHOLD; // Pre-calculate squared threshold for faster comparisons
 
     // Try X axis
     let newX = startX + dx;
     let blockedX = false;
     for (const w of state.walls) {
-        if (Math.abs(newX - w.position.x) <= WALL_THRESHOLD &&
-            Math.abs(startZ - w.position.z) <= WALL_THRESHOLD) {
+        const dx2 = newX - w.position.x;
+        const dz2 = startZ - w.position.z;
+        if (dx2 * dx2 <= thresholdSq && dz2 * dz2 <= thresholdSq) {
             blockedX = true;
             // Push out: find nearest edge
             if (dx > 0) newX = w.position.x - WALL_THRESHOLD - 0.001;
@@ -89,8 +106,9 @@ function moveWithCollision(startX, startZ, dx, dz) {
     if (blockedX) {
         // Verify the pushed-out position isn't inside another wall
         for (const w of state.walls) {
-            if (Math.abs(newX - w.position.x) <= WALL_THRESHOLD &&
-                Math.abs(startZ - w.position.z) <= WALL_THRESHOLD) {
+            const dx2 = newX - w.position.x;
+            const dz2 = startZ - w.position.z;
+            if (dx2 * dx2 <= thresholdSq && dz2 * dz2 <= thresholdSq) {
                 newX = startX; // can't push out safely, revert
                 break;
             }
@@ -101,8 +119,9 @@ function moveWithCollision(startX, startZ, dx, dz) {
     let newZ = startZ + dz;
     let blockedZ = false;
     for (const w of state.walls) {
-        if (Math.abs(newX - w.position.x) <= WALL_THRESHOLD &&
-            Math.abs(newZ - w.position.z) <= WALL_THRESHOLD) {
+        const dx2 = newX - w.position.x;
+        const dz2 = newZ - w.position.z;
+        if (dx2 * dx2 <= thresholdSq && dz2 * dz2 <= thresholdSq) {
             blockedZ = true;
             if (dz > 0) newZ = w.position.z - WALL_THRESHOLD - 0.001;
             else newZ = w.position.z + WALL_THRESHOLD + 0.001;
@@ -111,15 +130,19 @@ function moveWithCollision(startX, startZ, dx, dz) {
     }
     if (blockedZ) {
         for (const w of state.walls) {
-            if (Math.abs(newX - w.position.x) <= WALL_THRESHOLD &&
-                Math.abs(newZ - w.position.z) <= WALL_THRESHOLD) {
+            const dx2 = newX - w.position.x;
+            const dz2 = newZ - w.position.z;
+            if (dx2 * dx2 <= thresholdSq && dz2 * dz2 <= thresholdSq) {
                 newZ = startZ;
                 break;
             }
         }
     }
 
-    return { x: newX, z: newZ, hitWall: blockedX || blockedZ };
+    _collisionResult.x = newX;
+    _collisionResult.z = newZ;
+    _collisionResult.hitWall = blockedX || blockedZ;
+    return _collisionResult;
 }
 
 function collidesWithWalls(pos) {
@@ -657,23 +680,21 @@ function animate() {
         const canSprint = state.isSprinting && isMoving && state.staminaLevel > 0;
         const speed = canSprint ? SETTINGS.sprintSpeed : SETTINGS.walkSpeed;
 
-        // Calculate camera-relative movement direction
+        // Calculate camera-relative movement direction (reuse objects for performance)
         if (isMoving && state.camera) {
-            const _camDir = new THREE.Vector3();
             state.controls.getDirection(_camDir);
             _camDir.y = 0;
             _camDir.normalize();
-            const _camRight = new THREE.Vector3();
             _camRight.setFromMatrixColumn(state.camera.matrix, 0);
             _camRight.y = 0;
             _camRight.normalize();
             const inputFwd = Number(state.moveForward) - Number(state.moveBackward);
             const inputRight = Number(state.moveRight) - Number(state.moveLeft);
-            const wantDir = _camDir.clone().multiplyScalar(inputFwd).add(_camRight.clone().multiplyScalar(inputRight));
-            if (wantDir.x !== 0 || wantDir.z !== 0) {
-                wantDir.normalize();
-                state.velocity.x -= wantDir.x * speed * delta;
-                state.velocity.z -= wantDir.z * speed * delta;
+            _wantDir.copy(_camDir).multiplyScalar(inputFwd).addScaledVector(_camRight, inputRight);
+            if (_wantDir.x !== 0 || _wantDir.z !== 0) {
+                _wantDir.normalize();
+                state.velocity.x -= _wantDir.x * speed * delta;
+                state.velocity.z -= _wantDir.z * speed * delta;
             }
         }
 
@@ -700,7 +721,9 @@ function animate() {
         state.camera.position.x = result.x;
         state.camera.position.z = result.z;
 
-        const hitEnemy = collidesWithEnemy(state.camera.position);
+        // Use temp position to avoid modifying camera.position before checking
+        _tempPos.set(state.camera.position.x, state.camera.position.y, state.camera.position.z);
+        const hitEnemy = collidesWithEnemy(_tempPos);
         if (hitEnemy) {
             state.camera.position.x = oldX;
             state.camera.position.z = oldZ;
@@ -896,9 +919,10 @@ function animate() {
     } catch (e) {
         console.warn('Render skipped:', e);
     }
+    // Update minimap every 4 frames (optimization)
     if (state._frameCount == null) state._frameCount = 0;
     state._frameCount++;
-    if (state._frameCount % 4 === 0) updateMinimap();
+    if ((state._frameCount & 3) === 0) updateMinimap(); // Use bitwise AND instead of modulo for performance
 }
 
 window.addEventListener('resize', () => {
