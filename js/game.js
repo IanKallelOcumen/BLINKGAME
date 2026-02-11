@@ -415,9 +415,15 @@ function init() {
         });
     }
 
-    document.addEventListener('click', () => {
-        if (dom('start-screen')?.classList.contains('hidden')) {
-            state.controls?.lock();
+    document.addEventListener('click', (e) => {
+        // Only lock if clicking on the game viewport, not on UI elements
+        const target = e.target;
+        if (dom('start-screen')?.classList.contains('hidden') && 
+            target === state.renderer?.domElement || 
+            target === dom('game-viewport')) {
+            if (!state.controls?.isLocked) {
+                state.controls?.lock();
+            }
             unlockAudio();
         }
     });
@@ -430,10 +436,20 @@ function init() {
         }
     });
 
-    // Re-lock pointer if it escapes during gameplay
+    // Re-lock pointer if it escapes during gameplay (with delay to prevent snapping)
+    let relockTimeout = null;
     document.addEventListener('pointerlockchange', () => {
+        if (relockTimeout) {
+            clearTimeout(relockTimeout);
+            relockTimeout = null;
+        }
         if (state.hasStarted && !state.isGameOver && !state.controls?.isLocked && state.jumpscarePhase === 'none') {
-            state.controls?.lock();
+            // Add small delay to prevent camera snapping when pointer lock is regained
+            relockTimeout = setTimeout(() => {
+                if (state.hasStarted && !state.isGameOver && !state.controls?.isLocked && state.jumpscarePhase === 'none') {
+                    state.controls?.lock();
+                }
+            }, 100);
         }
     });
 
