@@ -626,9 +626,6 @@ function animate() {
 
         state.velocity.x -= state.velocity.x * 10.0 * delta;
         state.velocity.z -= state.velocity.z * 10.0 * delta;
-        state.direction.z = Number(state.moveForward) - Number(state.moveBackward);
-        state.direction.x = Number(state.moveRight) - Number(state.moveLeft);
-        if (state.direction.x !== 0 || state.direction.z !== 0) state.direction.normalize();
 
         const isMoving = state.moveForward || state.moveBackward || state.moveLeft || state.moveRight;
         if (isMoving) {
@@ -640,11 +637,24 @@ function animate() {
         const canSprint = state.isSprinting && isMoving && state.staminaLevel > 0;
         const speed = canSprint ? SETTINGS.sprintSpeed : SETTINGS.walkSpeed;
 
-        if (state.moveForward || state.moveBackward) {
-            state.velocity.z -= state.direction.z * speed * delta;
-        }
-        if (state.moveLeft || state.moveRight) {
-            state.velocity.x -= state.direction.x * speed * delta;
+        // Calculate camera-relative movement direction
+        if (isMoving && state.camera) {
+            const _camDir = new THREE.Vector3();
+            state.controls.getDirection(_camDir);
+            _camDir.y = 0;
+            _camDir.normalize();
+            const _camRight = new THREE.Vector3();
+            _camRight.setFromMatrixColumn(state.camera.matrix, 0);
+            _camRight.y = 0;
+            _camRight.normalize();
+            const inputFwd = Number(state.moveForward) - Number(state.moveBackward);
+            const inputRight = Number(state.moveRight) - Number(state.moveLeft);
+            const wantDir = _camDir.clone().multiplyScalar(inputFwd).add(_camRight.clone().multiplyScalar(inputRight));
+            if (wantDir.x !== 0 || wantDir.z !== 0) {
+                wantDir.normalize();
+                state.velocity.x -= wantDir.x * speed * delta;
+                state.velocity.z -= wantDir.z * speed * delta;
+            }
         }
 
         if (canSprint) {
@@ -658,19 +668,9 @@ function animate() {
             if (state.staminaLevel > 100) state.staminaLevel = 100;
         }
 
-        // Compute world-space displacement from camera-local velocity
-        state.camera.updateMatrix(); // ensure matrix reflects current quaternion
-        const _right = new THREE.Vector3();
-        _right.setFromMatrixColumn(state.camera.matrix, 0);
-        _right.y = 0; // constrain to XZ plane
-        _right.normalize();
-        const _fwd = new THREE.Vector3(-_right.z, 0, _right.x); // perpendicular in XZ
-
-        const localMoveX = -state.velocity.x * delta; // moveRight amount
-        const localMoveZ = -state.velocity.z * delta; // moveForward amount
-
-        const worldDx = _right.x * localMoveX + _fwd.x * localMoveZ;
-        const worldDz = _right.z * localMoveX + _fwd.z * localMoveZ;
+        // Apply velocity directly in world space (velocity is already in world space)
+        const worldDx = -state.velocity.x * delta;
+        const worldDz = -state.velocity.z * delta;
 
         const oldX = state.camera.position.x;
         const oldZ = state.camera.position.z;
