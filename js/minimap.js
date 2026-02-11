@@ -65,14 +65,14 @@ export function updateMinimap() {
     // Draw flashlight cone pointing forward (tip points up on rotated map)
     const coneLength = 10;
     const coneBaseWidth = 6;
-    // Tip of cone points forward (up on screen after rotation)
+    // Tip of cone points forward (up on screen after rotation = smaller Y)
     const tipX = cx;
     const tipY = cy - coneLength;
-    // Base of cone is wider and closer to player
+    // Base of cone is wider and at player center (behind the tip)
     const baseLeftX = cx - coneBaseWidth / 2;
-    const baseLeftY = cy - 2; // Slightly forward from center
+    const baseLeftY = cy; // At player center
     const baseRightX = cx + coneBaseWidth / 2;
-    const baseRightY = cy - 2;
+    const baseRightY = cy; // At player center
     
     ctx.fillStyle = 'rgba(255, 255, 200, 0.5)';
     ctx.strokeStyle = 'rgba(255, 255, 200, 0.7)';
