@@ -63,9 +63,9 @@ export function updateMinimap() {
     const p = { mx: cx, my: cy };
 
     // Draw flashlight cone SPREADING OUTWARD from player, rotating with camera direction
-    const coneLength = 16;
-    const coneBaseWidth = 4; // Narrow base at player (where light starts)
-    const coneTipWidth = 14; // Wide tip spreading outward
+    const coneLength = 18;
+    const coneBaseWidth = 6; // Narrow base at player (where light starts)
+    const coneTipWidth = 16; // Wide tip spreading outward
     
     // Calculate forward direction in rotated map space
     // Forward vector in world space: (forward.x, forward.z)
@@ -78,11 +78,11 @@ export function updateMinimap() {
     const perpX = Math.cos(forwardAngle + Math.PI / 2);
     const perpZ = Math.sin(forwardAngle + Math.PI / 2);
     
-    // Forward direction vector
+    // Forward direction vector (normalized)
     const forwardX = Math.sin(forwardAngle);
     const forwardZ = -Math.cos(forwardAngle);
     
-    // Base points (narrow, at player center)
+    // Base points (narrow, at player center) - make sure they're spread perpendicular
     const baseLeftX = cx + perpX * (coneBaseWidth / 2);
     const baseLeftY = cy + perpZ * (coneBaseWidth / 2);
     const baseRightX = cx - perpX * (coneBaseWidth / 2);
@@ -92,16 +92,16 @@ export function updateMinimap() {
     const tipCenterX = cx + forwardX * coneLength;
     const tipCenterY = cy + forwardZ * coneLength;
     
-    // Tip points (wide, spreading outward)
+    // Tip points (wide, spreading outward) - make sure they're spread perpendicular
     const tipLeftX = tipCenterX + perpX * (coneTipWidth / 2);
     const tipLeftY = tipCenterY + perpZ * (coneTipWidth / 2);
     const tipRightX = tipCenterX - perpX * (coneTipWidth / 2);
     const tipRightY = tipCenterY - perpZ * (coneTipWidth / 2);
     
     // Draw as a spreading flashlight beam (narrow to wide, rotating with camera)
-    ctx.fillStyle = 'rgba(255, 255, 200, 0.6)';
-    ctx.strokeStyle = 'rgba(255, 255, 200, 0.8)';
-    ctx.lineWidth = 2;
+    ctx.fillStyle = 'rgba(255, 255, 200, 0.7)';
+    ctx.strokeStyle = 'rgba(255, 255, 200, 0.9)';
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.moveTo(baseLeftX, baseLeftY); // Left side of narrow base
     ctx.lineTo(baseRightX, baseRightY); // Right side of narrow base
