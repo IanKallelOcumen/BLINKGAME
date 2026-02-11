@@ -62,27 +62,25 @@ export function updateMinimap() {
 
     const p = { mx: cx, my: cy };
 
-    // Draw flashlight cone as a fan/arc shape pointing forward
-    const coneLength = 12;
-    const coneBaseWidth = 8;
-    const coneTipWidth = 2;
-    // Base is at player center, tip extends forward
-    // If it's appearing on back, flip direction - forward should be larger Y (cy + coneLength)
+    // Draw flashlight cone as a wide fan shape pointing FORWARD (upward on rotated map)
+    const coneLength = 14;
+    const coneBaseWidth = 10; // Wide base at player
+    const coneTipWidth = 3; // Narrower but still visible tip
+    // Forward is UP on rotated map (smaller Y), so tip should be at cy - coneLength
     const baseLeftX = cx - coneBaseWidth / 2;
-    const baseLeftY = cy; // At player center
+    const baseLeftY = cy; // Base at player center
     const baseRightX = cx + coneBaseWidth / 2;
-    const baseRightY = cy; // At player center
+    const baseRightY = cy; // Base at player center
     const tipX = cx;
-    const tipY = cy + coneLength; // Forward direction (flipped)
+    const tipY = cy - coneLength; // Tip points FORWARD (upward)
     
-    // Draw as a fan shape (arc) for flashlight beam
-    ctx.fillStyle = 'rgba(255, 255, 200, 0.4)';
-    ctx.strokeStyle = 'rgba(255, 255, 200, 0.6)';
+    // Draw as a wide flashlight beam shape
+    ctx.fillStyle = 'rgba(255, 255, 200, 0.5)';
+    ctx.strokeStyle = 'rgba(255, 255, 200, 0.7)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(baseLeftX, baseLeftY); // Left base
     ctx.lineTo(tipX - coneTipWidth / 2, tipY); // Left side of tip
-    ctx.lineTo(tipX, tipY); // Center tip
     ctx.lineTo(tipX + coneTipWidth / 2, tipY); // Right side of tip
     ctx.lineTo(baseRightX, baseRightY); // Right base
     ctx.closePath();
