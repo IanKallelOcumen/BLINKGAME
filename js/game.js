@@ -62,71 +62,78 @@ function performBlink(refill) {
     }, SETTINGS.blinkDuration);
 }
 
-const WALL_HALF_SIZE = 2;
-const WALL_THRESHOLD = WALL_HALF_SIZE + PLAYER_RADIUS + 0.05;
+const MAX_STEP = 0.15; // smaller steps = no tunneling possible
+// Collision margin: start larger (e.g., 0.2) and decrease until collision matches visual wall edges
+// Set to 0.0 for exact match, negative to allow closer approach
+let WALL_COLLISION_MARGIN = 0.1; // Start with small margin, decrease to 0 or negative to match visual
+const _wallBox = new THREE.Box3(); // Reusable box for wall bounds
+const _wallMin = new THREE.Vector3();
+const _wallMax = new THREE.Vector3();
 
-/**
- * Separate-axis collision with wall sliding.
- * Tries X movement, then Z movement independently.
- * Returns {x, z} of the valid position after collision.
- */
-function moveWithCollision(startX, startZ, dx, dz) {
-    if (!state.walls || state.walls.length === 0) return { x: startX + dx, z: startZ + dz };
+function getWallBounds(wall) {
+    // Get actual world bounding box of wall mesh (accounts for geometry, position, scale, rotation)
+    // Update matrix world to ensure accurate bounds
+    wall.updateMatrixWorld(true);
+    _wallBox.setFromObject(wall);
+    _wallBox.getMin(_wallMin);
+    _wallBox.getMax(_wallMax);
+    return { minX: _wallMin.x, maxX: _wallMax.x, minZ: _wallMin.z, maxZ: _wallMax.z };
+}
 
-    // Try X axis
-    let newX = startX + dx;
-    let blockedX = false;
-    for (const w of state.walls) {
-        if (Math.abs(newX - w.position.x) <= WALL_THRESHOLD &&
-            Math.abs(startZ - w.position.z) <= WALL_THRESHOLD) {
-            blockedX = true;
-            // Push out: find nearest edge
-            if (dx > 0) newX = w.position.x - WALL_THRESHOLD - 0.001;
-            else newX = w.position.x + WALL_THRESHOLD + 0.001;
-            break;
-        }
-    }
-    if (blockedX) {
-        // Verify the pushed-out position isn't inside another wall
-        for (const w of state.walls) {
-            if (Math.abs(newX - w.position.x) <= WALL_THRESHOLD &&
-                Math.abs(startZ - w.position.z) <= WALL_THRESHOLD) {
-                newX = startX; // can't push out safely, revert
-                break;
-            }
-        }
-    }
-
-    // Try Z axis (using resolved X)
-    let newZ = startZ + dz;
-    let blockedZ = false;
-    for (const w of state.walls) {
-        if (Math.abs(newX - w.position.x) <= WALL_THRESHOLD &&
-            Math.abs(newZ - w.position.z) <= WALL_THRESHOLD) {
-            blockedZ = true;
-            if (dz > 0) newZ = w.position.z - WALL_THRESHOLD - 0.001;
-            else newZ = w.position.z + WALL_THRESHOLD + 0.001;
-            break;
-        }
-    }
-    if (blockedZ) {
-        for (const w of state.walls) {
-            if (Math.abs(newX - w.position.x) <= WALL_THRESHOLD &&
-                Math.abs(newZ - w.position.z) <= WALL_THRESHOLD) {
-                newZ = startZ;
-                break;
-            }
-        }
-    }
-
-    return { x: newX, z: newZ, hitWall: blockedX || blockedZ };
+function pointInsideWallBox(px, pz, wallBounds) {
+    // Check distance from player center to nearest point on wall rectangle (actual mesh bounds)
+    // Expand wall bounds by player radius + margin for collision detection
+    const expand = PLAYER_RADIUS + WALL_COLLISION_MARGIN;
+    const wallMinX = wallBounds.minX - expand;
+    const wallMaxX = wallBounds.maxX + expand;
+    const wallMinZ = wallBounds.minZ - expand;
+    const wallMaxZ = wallBounds.maxZ + expand;
+    
+    // Find closest point on expanded wall rectangle to player
+    const closestX = Math.max(wallMinX, Math.min(px, wallMaxX));
+    const closestZ = Math.max(wallMinZ, Math.min(pz, wallMaxZ));
+    
+    // Check if player circle overlaps expanded wall rectangle
+    const distSq = (px - closestX) * (px - closestX) + (pz - closestZ) * (pz - closestZ);
+    return distSq <= PLAYER_RADIUS * PLAYER_RADIUS;
 }
 
 function collidesWithWalls(pos) {
     if (!state.walls || state.walls.length === 0) return false;
     for (const w of state.walls) {
-        if (Math.abs(pos.x - w.position.x) <= WALL_THRESHOLD &&
-            Math.abs(pos.z - w.position.z) <= WALL_THRESHOLD) return true;
+        const bounds = getWallBounds(w);
+        if (pointInsideWallBox(pos.x, pos.z, bounds)) return true;
+    }
+    return false;
+}
+
+function segmentCollidesWithWalls(fromPos, toPos) {
+    if (!state.walls || state.walls.length === 0) return false;
+    const ax = fromPos.x, az = fromPos.z;
+    const bx = toPos.x, bz = toPos.z;
+    for (const w of state.walls) {
+        const bounds = getWallBounds(w);
+        if (pointInsideWallBox(ax, az, bounds) || pointInsideWallBox(bx, bz, bounds)) return true;
+        // Expand wall bounds by player radius + margin for segment sweep test
+        const expand = PLAYER_RADIUS + WALL_COLLISION_MARGIN;
+        const minX = bounds.minX - expand;
+        const maxX = bounds.maxX + expand;
+        const minZ = bounds.minZ - expand;
+        const maxZ = bounds.maxZ + expand;
+        const dx = bx - ax, dz = bz - az;
+        let t0 = 0, t1 = 1;
+        if (Math.abs(dx) >= 1e-9) {
+            const tx0 = (minX - ax) / dx, tx1 = (maxX - ax) / dx;
+            t0 = Math.max(t0, Math.min(tx0, tx1));
+            t1 = Math.min(t1, Math.max(tx0, tx1));
+        } else if (ax < minX || ax > maxX) continue;
+        if (t0 > t1) continue;
+        if (Math.abs(dz) >= 1e-9) {
+            const tz0 = (minZ - az) / dz, tz1 = (maxZ - az) / dz;
+            t0 = Math.max(t0, Math.min(tz0, tz1));
+            t1 = Math.min(t1, Math.max(tz0, tz1));
+        } else if (az < minZ || az > maxZ) continue;
+        if (t0 <= t1 && t1 >= 0 && t0 <= 1) return true;
     }
     return false;
 }
@@ -626,10 +633,6 @@ function animate() {
 
         state.velocity.x -= state.velocity.x * 10.0 * delta;
         state.velocity.z -= state.velocity.z * 10.0 * delta;
-        state.direction.z = Number(state.moveForward) - Number(state.moveBackward);
-        state.direction.x = Number(state.moveRight) - Number(state.moveLeft);
-        if (state.direction.x !== 0 || state.direction.z !== 0) state.direction.normalize();
-
         const isMoving = state.moveForward || state.moveBackward || state.moveLeft || state.moveRight;
         if (isMoving) {
             state.stillTime = 0;
@@ -640,11 +643,23 @@ function animate() {
         const canSprint = state.isSprinting && isMoving && state.staminaLevel > 0;
         const speed = canSprint ? SETTINGS.sprintSpeed : SETTINGS.walkSpeed;
 
-        if (state.moveForward || state.moveBackward) {
-            state.velocity.z -= state.direction.z * speed * delta;
-        }
-        if (state.moveLeft || state.moveRight) {
-            state.velocity.x -= state.direction.x * speed * delta;
+        if (isMoving && state.camera) {
+            const _camDir = new THREE.Vector3();
+            state.controls.getDirection(_camDir);
+            _camDir.y = 0;
+            _camDir.normalize();
+            const _camRight = new THREE.Vector3();
+            _camRight.setFromMatrixColumn(state.camera.matrix, 0);
+            _camRight.y = 0;
+            _camRight.normalize();
+            const inputFwd = Number(state.moveForward) - Number(state.moveBackward);
+            const inputRight = Number(state.moveRight) - Number(state.moveLeft);
+            const wantDir = _camDir.clone().multiplyScalar(inputFwd).add(_camRight.clone().multiplyScalar(inputRight));
+            if (wantDir.x !== 0 || wantDir.z !== 0) {
+                wantDir.normalize();
+                state.velocity.x -= wantDir.x * speed * delta;
+                state.velocity.z -= wantDir.z * speed * delta;
+            }
         }
 
         if (canSprint) {
@@ -658,45 +673,70 @@ function animate() {
             if (state.staminaLevel > 100) state.staminaLevel = 100;
         }
 
-        // Compute world-space displacement from camera-local velocity
-        state.camera.updateMatrix(); // ensure matrix reflects current quaternion
-        const _right = new THREE.Vector3();
-        _right.setFromMatrixColumn(state.camera.matrix, 0);
-        _right.y = 0; // constrain to XZ plane
-        _right.normalize();
-        const _fwd = new THREE.Vector3(-_right.z, 0, _right.x); // perpendicular in XZ
+        // Get camera world position (camera is direct child of scene, so position is world)
+        const oldPos = state.camera.position.clone();
+        const moveX = -state.velocity.x * delta;
+        const moveZ = -state.velocity.z * delta;
+        const totalDist = Math.hypot(moveX, moveZ);
 
-        const localMoveX = -state.velocity.x * delta; // moveRight amount
-        const localMoveZ = -state.velocity.z * delta; // moveForward amount
+        let hitWall = false;
+        let hitEnemy = false;
+        let lastValid = oldPos.clone();
 
-        const worldDx = _right.x * localMoveX + _fwd.x * localMoveZ;
-        const worldDz = _right.z * localMoveX + _fwd.z * localMoveZ;
-
-        const oldX = state.camera.position.x;
-        const oldZ = state.camera.position.z;
-
-        // Axis-separated collision with wall sliding
-        const result = moveWithCollision(oldX, oldZ, worldDx, worldDz);
-        state.camera.position.x = result.x;
-        state.camera.position.z = result.z;
-
-        const hitEnemy = collidesWithEnemy(state.camera.position);
-        if (hitEnemy) {
-            state.camera.position.x = oldX;
-            state.camera.position.z = oldZ;
+        if (totalDist > 1e-6) {
+            const steps = Math.max(1, Math.ceil(totalDist / MAX_STEP));
+            const stepX = moveX / steps;
+            const stepZ = moveZ / steps;
+            for (let i = 0; i < steps; i++) {
+                // Per-axis resolution (from quk): move X then Z, check after each so corner tunneling is impossible
+                if (Math.abs(stepX) > 1e-8) {
+                    const beforeX = state.camera.position.clone();
+                    state.camera.position.x += stepX;
+                    const afterX = state.camera.position.clone(); // Clone to avoid reference issues
+                    if (segmentCollidesWithWalls(beforeX, afterX) || collidesWithWalls(afterX)) {
+                        hitWall = true;
+                        state.camera.position.copy(beforeX);
+                        break;
+                    }
+                    if (collidesWithEnemy(afterX)) {
+                        hitEnemy = true;
+                        state.camera.position.copy(beforeX);
+                        break;
+                    }
+                    lastValid.copy(afterX);
+                }
+                if (hitWall || hitEnemy) break;
+                if (Math.abs(stepZ) > 1e-8) {
+                    const beforeZ = state.camera.position.clone();
+                    state.camera.position.z += stepZ;
+                    const afterZ = state.camera.position.clone(); // Clone to avoid reference issues
+                    if (segmentCollidesWithWalls(beforeZ, afterZ) || collidesWithWalls(afterZ)) {
+                        hitWall = true;
+                        state.camera.position.copy(beforeZ);
+                        break;
+                    }
+                    if (collidesWithEnemy(afterZ)) {
+                        hitEnemy = true;
+                        state.camera.position.copy(beforeZ);
+                        break;
+                    }
+                    lastValid.copy(afterZ);
+                }
+            }
         }
 
         const observed = state.isBlinking ? false : enemyIsObserved();
 
-        if (hitEnemy) {
+        if (hitWall || hitEnemy) {
             state.velocity.set(0, 0, 0);
-            triggerCaught();
-        } else if (result.hitWall && !observed && state.enemyModel) {
-            state.velocity.set(0, 0, 0);
-            let enemySpeed = SETTINGS.enemySpeed + state.artifactsCollected * SETTINGS.enemySpeedPerArtifact;
-            if (state.enemyBurstTime > 0) enemySpeed *= SETTINGS.enemyBurstMultiplier;
-            const caught = moveEnemyStep(enemySpeed * delta, delta);
-            if (caught) triggerCaught();
+            if (hitEnemy) {
+                triggerCaught();
+            } else if (hitWall && !observed) {
+                let enemySpeed = SETTINGS.enemySpeed + state.artifactsCollected * SETTINGS.enemySpeedPerArtifact;
+                if (state.enemyBurstTime > 0) enemySpeed *= SETTINGS.enemyBurstMultiplier;
+                const caught = moveEnemyStep(enemySpeed * delta, delta);
+                if (caught) triggerCaught();
+            }
         }
 
         const fill = dom('stamina-meter-fill');
