@@ -7,6 +7,7 @@ import { SETTINGS } from './config.js';
 import { state } from './state.js';
 
 const MINIMAP_RADIUS_WORLD = 28;
+const _minimapForward = new THREE.Vector3();
 
 export function updateMinimap() {
     if (state.isGameOver) return;
@@ -30,10 +31,8 @@ export function updateMinimap() {
 
     const px = state.camera.position.x;
     const pz = state.camera.position.z;
-    const forward = new THREE.Vector3();
-    state.camera.getWorldDirection(forward);
-    // Yaw so that (forward.x, forward.z) maps to (0, 1) in map space -> up on screen
-    const yaw = Math.atan2(-forward.x, forward.z);
+    state.camera.getWorldDirection(_minimapForward);
+    const yaw = Math.atan2(-_minimapForward.x, _minimapForward.z);
     const cos = Math.cos(yaw);
     const sin = Math.sin(yaw);
 

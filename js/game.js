@@ -4,7 +4,6 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import {
-    ASSETS,
     SETTINGS,
     PLAYER_RADIUS,
     EXIT_RADIUS,
@@ -29,6 +28,14 @@ function dom(id) {
 const _camDir = new THREE.Vector3();
 const _camRight = new THREE.Vector3();
 const _wantDir = new THREE.Vector3();
+
+// Cache last UI values to avoid DOM updates when unchanged
+let _lastStaminaPct = -1;
+let _lastBlinkPct = -1;
+let _lastFlashlightPct = -1;
+
+// WebGL context can be lost when tab is backgrounded; skip render until restored to avoid freeze
+let _webglContextLost = false;
 
 function startGame() {
     if (state.hasStarted) return;
@@ -123,15 +130,6 @@ function moveWithCollision(startX, startZ, dx, dz) {
     }
 
     return { x: newX, z: newZ, hitWall: blockedX || blockedZ };
-}
-
-function collidesWithWalls(pos) {
-    if (!state.walls || state.walls.length === 0) return false;
-    for (const w of state.walls) {
-        if (Math.abs(pos.x - w.position.x) <= WALL_THRESHOLD &&
-            Math.abs(pos.z - w.position.z) <= WALL_THRESHOLD) return true;
-    }
-    return false;
 }
 
 function collidesWithEnemy(pos) {
@@ -332,7 +330,7 @@ function gameWin() {
     if (state.isGameOver) return;
     state.isGameOver = true;
     stopAllSounds();
-    state.controls.unlock();
+    state.controls?.unlock();
     const txt = dom('center-text');
     if (txt) { txt.innerText = 'ESCAPED'; txt.style.display = 'block'; txt.style.color = '#00ff00'; }
     const rb = dom('restart-btn');
@@ -422,8 +420,7 @@ function init() {
         // Only lock if clicking on the game viewport, not on UI elements
         const target = e.target;
         if (dom('start-screen')?.classList.contains('hidden') && 
-            target === state.renderer?.domElement || 
-            target === dom('game-viewport')) {
+            (target === state.renderer?.domElement || target === dom('game-viewport'))) {
             if (!state.controls?.isLocked) {
                 state.controls?.lock();
             }
@@ -439,23 +436,7 @@ function init() {
         }
     });
 
-    // Re-lock pointer if it escapes during gameplay (with delay to prevent snapping)
-    let relockTimeout = null;
-    document.addEventListener('pointerlockchange', () => {
-        if (relockTimeout) {
-            clearTimeout(relockTimeout);
-            relockTimeout = null;
-        }
-        if (state.hasStarted && !state.isGameOver && !state.controls?.isLocked && state.jumpscarePhase === 'none') {
-            // Add small delay to prevent camera snapping when pointer lock is regained
-            relockTimeout = setTimeout(() => {
-                if (state.hasStarted && !state.isGameOver && !state.controls?.isLocked && state.jumpscarePhase === 'none' && document.pointerLockElement === null) {
-                    state.controls?.lock();
-                }
-                relockTimeout = null;
-            }, 150);
-        }
-    });
+    // No auto re-lock on pointerlockchange (was causing lag). User can click viewport again to re-lock.
 
     initAudio();
 
@@ -540,8 +521,12 @@ function init() {
     loadGameAssets(hideLoading);
 
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden && state.controls?.isLocked) {
-            state.controls.unlock();
+        if (document.hidden) {
+            // Don't call unlock() here - it can cause freeze; browser often releases pointer lock on alt-tab anyway
+        } else {
+            // Tab visible again: reset clock and kick animation loop (rAF can stop when tab hidden)
+            state.prevTime = performance.now();
+            requestAnimationFrame(() => requestAnimationFrame(animate));
         }
     });
 
@@ -554,7 +539,12 @@ function init() {
     state.controls.addEventListener('unlock', () => { stopAllSounds(); });
 
     state.renderer.domElement.addEventListener('webglcontextlost', (e) => {
+        _webglContextLost = true;
         e.preventDefault();
+    });
+    state.renderer.domElement.addEventListener('webglcontextrestored', () => {
+        _webglContextLost = false;
+        state.prevTime = performance.now();
     });
 }
 
@@ -618,19 +608,21 @@ function updateVolumeDisplay() {
 }
 
 function animate() {
-    requestAnimationFrame(animate);
-
-    if (state.jumpscarePhase === 'jumpscare') {
+    try {
+        if (state.jumpscarePhase === 'jumpscare') {
         const elapsed = performance.now() - state.jumpscareStartTime;
         const progress = Math.min(1, elapsed / DEATH_DURATION);
         state.camera.rotation.x = (state.deathCameraPitch || 0) + progress * Math.PI * 0.5;
         const overlay = dom('death-overlay');
         if (overlay) overlay.style.opacity = String(progress);
 
-        try {
-            state.renderer.render(state.scene, state.camera);
-        } catch (e) {
-            console.warn('Render skipped:', e);
+        const glJ = state.renderer?.context;
+        if (glJ && !glJ.isContextLost()) {
+            try {
+                state.renderer.render(state.scene, state.camera);
+            } catch (e) {
+                console.warn('Render skipped:', e);
+            }
         }
 
         if (elapsed >= DEATH_DURATION) {
@@ -644,8 +636,7 @@ function animate() {
         let delta = (time - state.prevTime) / 1000;
         if (delta > MAX_DELTA) delta = MAX_DELTA;
 
-        // Update controls to handle mouse movement (PointerLockControls.update() takes no parameters)
-        state.controls.update();
+        // Mouse look is applied in PointerLockControls mousemove handler; no per-frame update needed
 
         state.velocity.x -= state.velocity.x * 10.0 * delta;
         state.velocity.z -= state.velocity.z * 10.0 * delta;
@@ -722,9 +713,13 @@ function animate() {
             if (caught) triggerCaught();
         }
 
-        const fill = dom('stamina-meter-fill');
+        const staminaPct = Math.max(0, state.staminaLevel);
+        if (staminaPct !== _lastStaminaPct) {
+            _lastStaminaPct = staminaPct;
+            const fill = dom('stamina-meter-fill');
+            if (fill) fill.style.width = staminaPct + '%';
+        }
         const container = dom('stamina-meter-container');
-        if (fill) fill.style.width = Math.max(0, state.staminaLevel) + '%';
         if (container) {
             container.classList.toggle('low', state.staminaLevel <= 25);
             container.classList.toggle('regen', !isMoving && state.staminaLevel < 100);
@@ -742,17 +737,24 @@ function animate() {
                 state.forcedBlinkCooldown = 2.5;
             }
         }
-        const blinkFill = dom('blink-meter-fill');
+        const blinkPct = Math.max(0, state.blinkLevel);
+        if (blinkPct !== _lastBlinkPct) {
+            _lastBlinkPct = blinkPct;
+            const blinkFill = dom('blink-meter-fill');
+            if (blinkFill) blinkFill.style.width = blinkPct + '%';
+        }
         const blinkContainer = dom('blink-meter-container');
-        if (blinkFill) blinkFill.style.width = Math.max(0, state.blinkLevel) + '%';
         if (blinkContainer) {
             blinkContainer.classList.toggle('low', state.blinkLevel <= 25);
             blinkContainer.classList.remove('regen');
         }
         const flashlightCharge = Math.max(0, Math.min(100, (1 - state.flashlightDim) * 100));
-        const flashlightFill = dom('flashlight-meter-fill');
+        if (flashlightCharge !== _lastFlashlightPct) {
+            _lastFlashlightPct = flashlightCharge;
+            const flashlightFill = dom('flashlight-meter-fill');
+            if (flashlightFill) flashlightFill.style.width = flashlightCharge + '%';
+        }
         const flashlightContainer = dom('flashlight-meter-container');
-        if (flashlightFill) flashlightFill.style.width = flashlightCharge + '%';
         if (flashlightContainer) flashlightContainer.classList.toggle('low', flashlightCharge <= 25);
 
         let distToEnemy = Infinity;
@@ -763,7 +765,7 @@ function animate() {
 
             if (observed) {
                 state.enemyWasObserved = true;
-                state.enemyLastKnownPlayerPos = state.camera.position.clone();
+                state.enemyLastKnownPlayerPos.copy(state.camera.position);
                 state.enemyLastKnownTime = performance.now() * 0.001;
             }
             if (observed && distToEnemy < SETTINGS.stareKillDistance) {
@@ -894,15 +896,24 @@ function animate() {
         stopAllSounds();
     }
 
-    try {
-        state.renderer.render(state.scene, state.camera);
-    } catch (e) {
-        console.warn('Render skipped:', e);
+    const gl = state.renderer?.context;
+    const canRender = !_webglContextLost && gl && !gl.isContextLost();
+    if (canRender) {
+        try {
+            state.renderer.render(state.scene, state.camera);
+        } catch (e) {
+            console.warn('Render skipped:', e);
+        }
     }
     // Update minimap every 4 frames (optimization)
     if (state._frameCount == null) state._frameCount = 0;
     state._frameCount++;
     if (state._frameCount % 4 === 0) updateMinimap();
+    } catch (e) {
+        console.warn('Game loop error:', e);
+    } finally {
+        requestAnimationFrame(animate);
+    }
 }
 
 window.addEventListener('resize', () => {

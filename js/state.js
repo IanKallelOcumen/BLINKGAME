@@ -33,7 +33,7 @@ export const state = {
     enemyPathTime: 0,
     enemyStuckFrames: 0,
     enemyLastTeleportTime: 0,
-    enemyLastKnownPlayerPos: null,
+    enemyLastKnownPlayerPos: new THREE.Vector3(),
     enemyLastKnownTime: 0,
     enemyBurstTime: 0,
     enemyWasObserved: false,

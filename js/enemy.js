@@ -263,7 +263,7 @@ export function spawnEnemy() {
     group.userData.meshRoot = group;
     state.enemyModel = group;
     state.enemyPath = null;
-    state.enemyLastKnownPlayerPos = state.camera.position.clone();
+    state.enemyLastKnownPlayerPos.copy(state.camera.position);
     state.enemyLastKnownTime = performance.now() * 0.001;
     state.scene.add(state.enemyModel);
     state.pendingEnemyModel = null;
@@ -503,28 +503,31 @@ function getBlockingObjects() {
 
 const OBSERVED_RAYCAST_SKIP_DIST = 2.5;
 
+// Reusable objects to avoid allocations every frame (reduces lag when looking around)
+const _toEnemy = new THREE.Vector3();
+const _forwardObs = new THREE.Vector3();
+const _observedRaycaster = new THREE.Raycaster();
+
 export function enemyIsObserved() {
     if (!state.enemyModel || !state.camera) return false;
 
     const camPos = state.camera.position;
     const enemyPos = state.enemyModel.position;
-    const toEnemy = new THREE.Vector3().subVectors(enemyPos, camPos);
-    const maxDist = toEnemy.length();
+    _toEnemy.subVectors(enemyPos, camPos);
+    const maxDist = _toEnemy.length();
     if (maxDist < 0.1) return true;
-    toEnemy.normalize();
+    _toEnemy.normalize();
 
-    const forward = new THREE.Vector3();
-    state.camera.getWorldDirection(forward);
-    const dot = forward.dot(toEnemy);
+    state.camera.getWorldDirection(_forwardObs);
+    const dot = _forwardObs.dot(_toEnemy);
     if (dot <= SETTINGS.observationDotThreshold) return false;
 
     if (maxDist < OBSERVED_RAYCAST_SKIP_DIST) return true;
 
-    const raycaster = new THREE.Raycaster();
-    raycaster.set(camPos, toEnemy);
-    raycaster.far = maxDist - 0.05;
+    _observedRaycaster.set(camPos, _toEnemy);
+    _observedRaycaster.far = maxDist - 0.05;
     const blocking = getBlockingObjects();
-    const hits = raycaster.intersectObjects(blocking, false);
+    const hits = _observedRaycaster.intersectObjects(blocking, false);
     if (hits.length > 0) return false;
 
     return true;
