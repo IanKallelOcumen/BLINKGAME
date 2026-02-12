@@ -521,12 +521,9 @@ function init() {
     loadGameAssets(hideLoading);
 
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-            // Don't call unlock() here - it can cause freeze; browser often releases pointer lock on alt-tab anyway
-        } else {
-            // Tab visible again: reset clock and kick animation loop (rAF can stop when tab hidden)
+        if (!document.hidden) {
+            // Tab visible again: reset clock so delta doesn't spike
             state.prevTime = performance.now();
-            requestAnimationFrame(() => requestAnimationFrame(animate));
         }
     });
 
@@ -616,8 +613,7 @@ function animate() {
         const overlay = dom('death-overlay');
         if (overlay) overlay.style.opacity = String(progress);
 
-        const glJ = state.renderer?.context;
-        if (glJ && !glJ.isContextLost()) {
+        if (!_webglContextLost) {
             try {
                 state.renderer.render(state.scene, state.camera);
             } catch (e) {
@@ -896,9 +892,7 @@ function animate() {
         stopAllSounds();
     }
 
-    const gl = state.renderer?.context;
-    const canRender = !_webglContextLost && gl && !gl.isContextLost();
-    if (canRender) {
+    if (!_webglContextLost) {
         try {
             state.renderer.render(state.scene, state.camera);
         } catch (e) {
