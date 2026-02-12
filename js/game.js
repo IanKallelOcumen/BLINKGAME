@@ -37,9 +37,75 @@ let _lastFlashlightPct = -1;
 // WebGL context can be lost when tab is backgrounded; skip render until restored to avoid freeze
 let _webglContextLost = false;
 
+// ─── Debug overlay (hidden by default, toggle with Ctrl+F) ───
+let _dbgVisible = false;
+const _dbgLog = [];
+let _dbgEl = null;
+
+function _dbgEnsureEl() {
+    if (_dbgEl) return _dbgEl;
+    _dbgEl = document.createElement('div');
+    _dbgEl.id = '_dbg';
+    _dbgEl.style.cssText = 'position:fixed;top:0;left:0;z-index:9999;background:rgba(0,0,0,0.85);color:#0f0;font:11px monospace;padding:8px 12px;max-width:50vw;max-height:60vh;overflow-y:auto;pointer-events:none;white-space:pre-wrap;display:none;border-bottom-right-radius:6px;';
+    document.body.appendChild(_dbgEl);
+    return _dbgEl;
+}
+
+function _dbg(msg) {
+    const ts = ((performance.now() / 1000) | 0);
+    const line = `[${ts}s] ${msg}`;
+    console.log('[BLINK]', msg);
+    _dbgLog.push(line);
+    if (_dbgLog.length > 200) _dbgLog.shift();
+    if (_dbgVisible) _dbgRefresh();
+}
+
+function _dbgRefresh() {
+    const el = _dbgEnsureEl();
+    el.textContent = '── DEBUG (Ctrl+F to close) ──\n' + _dbgLog.join('\n');
+    el.scrollTop = el.scrollHeight;
+}
+
+function _dbgToggle() {
+    _dbgVisible = !_dbgVisible;
+    const el = _dbgEnsureEl();
+    el.style.display = _dbgVisible ? 'block' : 'none';
+    if (_dbgVisible) _dbgRefresh();
+}
+
+// Live stats updated every second when debug is visible
+function _dbgLiveStats() {
+    if (!_dbgVisible || !state.hasStarted) return;
+    const el = _dbgEnsureEl();
+    const fps = state._frameCount ? Math.round(state._frameCount / ((performance.now() - (state._fpsStart || performance.now())) / 1000)) : '?';
+    const locked = state.controls?.isLocked ? 'YES' : 'NO';
+    const pos = state.camera ? `${state.camera.position.x.toFixed(1)}, ${state.camera.position.z.toFixed(1)}` : '?';
+    const enemy = state.enemyModel ? `${state.enemyModel.position.x.toFixed(1)}, ${state.enemyModel.position.z.toFixed(1)}` : 'none';
+    const elapsed = state.gameStartTime ? ((performance.now() - state.gameStartTime) / 1000).toFixed(0) : '0';
+    const arts = `${state.artifactsCollected}/${state.artifacts?.length || 0}`;
+
+    // Update the last line if it's a stats line, otherwise append
+    const statsLine = `FPS:${fps} | Lock:${locked} | Pos:${pos} | Enemy:${enemy} | Time:${elapsed}s | Arts:${arts} | Vol:${((state.masterVolume ?? 1) * 100).toFixed(0)}%`;
+    if (_dbgLog.length > 0 && _dbgLog[_dbgLog.length - 1].includes('FPS:')) {
+        _dbgLog[_dbgLog.length - 1] = statsLine;
+    } else {
+        _dbgLog.push(statsLine);
+    }
+    _dbgRefresh();
+}
+setInterval(_dbgLiveStats, 1000);
+
+document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.code === 'KeyF') {
+        e.preventDefault();
+        _dbgToggle();
+    }
+});
+
 function startGame() {
     if (state.hasStarted) return;
     state.hasStarted = true;
+    _dbg('Game starting');
     unlockAudio();
     const startScreen = dom('start-screen');
     if (startScreen) {
@@ -50,6 +116,7 @@ function startGame() {
         dom('controls-hint-overlay')?.classList.add('hidden');
     }, 5000);
     state.controls?.lock();
+    state._fpsStart = performance.now();
 }
 
 function hideLoading() {
@@ -177,6 +244,7 @@ function checkArtifacts() {
     });
 
     if (collectedThisFrame.length > 0) {
+        _dbg('Artifact collected! (' + state.artifactsCollected + '/' + SETTINGS.totalArtifacts + ')');
         playArtifactPickup();
         const counterEl = dom('item-count');
         if (counterEl) {
@@ -187,6 +255,7 @@ function checkArtifacts() {
             state.pendingEnemyModel &&
             !state.enemyModel
         ) {
+            _dbg('ENEMY SPAWNED!');
             spawnEnemy();
             playJumpscare();
             const txt = dom('center-text');
@@ -208,6 +277,7 @@ function checkArtifacts() {
             state.exitDoor &&
             !state.exitDoor.visible
         ) {
+            _dbg('EXIT DOOR OPENED - all artifacts collected!');
             state.exitDoor.visible = true;
             if (state.exitDoorGlow) state.exitDoorGlow.intensity = 3;
             if (state.exitDoorParticles) state.exitDoorParticles.visible = true;
@@ -273,6 +343,7 @@ function respawnPlayer() {
 function triggerCaught() {
     if (state.jumpscarePhase !== 'none') return;
     if (!state.camera) return;
+    _dbg('CAUGHT by enemy! Lives: ' + (state.lives - 1));
     state.jumpscarePhase = 'jumpscare';
     state.jumpscareStartTime = performance.now();
     state.deathCameraPitch = state.camera.rotation.x;
@@ -328,6 +399,7 @@ function showGameOverScreen() {
 
 function gameWin() {
     if (state.isGameOver) return;
+    _dbg('WIN! Escaped the maze');
     state.isGameOver = true;
     stopAllSounds();
     state.controls?.unlock();
@@ -518,7 +590,9 @@ function init() {
     });
 
     generateLevel();
+    _dbg('Level generated (' + state.walls.length + ' walls)');
     loadGameAssets(hideLoading);
+    _dbg('Init complete, loading assets...');
 
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
@@ -528,18 +602,24 @@ function init() {
     });
 
     state.controls.addEventListener('lock', () => {
+        _dbg('POINTER LOCK GRANTED');
         state.prevTime = performance.now();
         state.gameStartTime = performance.now();
         state.lastCameraY = state.camera.position.y;
         startRoomTone();
     });
-    state.controls.addEventListener('unlock', () => { stopAllSounds(); });
+    state.controls.addEventListener('unlock', () => {
+        _dbg('POINTER LOCK LOST');
+        stopAllSounds();
+    });
 
     state.renderer.domElement.addEventListener('webglcontextlost', (e) => {
+        _dbg('WARNING: WebGL context lost');
         _webglContextLost = true;
         e.preventDefault();
     });
     state.renderer.domElement.addEventListener('webglcontextrestored', () => {
+        _dbg('WebGL context restored');
         _webglContextLost = false;
         state.prevTime = performance.now();
     });
